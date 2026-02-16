@@ -80,7 +80,7 @@ module Cwt
       end
 
       worktrees.find do |wt|
-        wt.name == name_or_path || wt.path == normalized_path
+        wt.name == name_or_path || wt.branch == name_or_path || wt.path == normalized_path
       end
     end
 
@@ -89,13 +89,16 @@ module Cwt
     def create_worktree(name)
       require_relative 'worktree'
 
-      # Sanitize name
-      safe_name = name.strip.gsub(/[^a-zA-Z0-9_\-]/, '_')
+      # Sanitize name (allow / for branch name hierarchy)
+      safe_name = name.strip
+                      .gsub(%r{[^a-zA-Z0-9_\-/]}, '_')
+                      .gsub(%r{/+}, '/')
+                      .gsub(%r{^/|/$}, '')
       path = File.join(worktrees_dir, safe_name)
       absolute_path = File.join(@root, WORKTREE_DIR, safe_name)
 
-      # Ensure .worktrees exists
-      FileUtils.mkdir_p(worktrees_dir)
+      # Ensure parent directories exist (e.g. .worktrees/feat/ for feat/my-feature)
+      FileUtils.mkdir_p(File.dirname(path))
 
       # Create worktree with new branch
       cmd = ["git", "-C", @root, "worktree", "add", "-b", safe_name, path]

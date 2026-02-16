@@ -21,7 +21,8 @@ module Cwt
     end
 
     def name
-      File.basename(@path)
+      resolve = ->(p) { File.realpath(p) rescue File.expand_path(p) }
+      resolve.call(@path).delete_prefix("#{resolve.call(@repository.worktrees_dir)}/")
     end
 
     def exists?
@@ -94,7 +95,10 @@ module Cwt
         end
       end
 
-      # Step 3: Delete Branch
+      # Step 3: Clean up empty parent directories under .worktrees/
+      cleanup_empty_parents
+
+      # Step 4: Delete Branch
       delete_branch(force: force)
     end
 
@@ -173,10 +177,20 @@ module Cwt
       end
     end
 
+    def cleanup_empty_parents
+      worktrees_dir = @repository.worktrees_dir
+      dir = File.dirname(@path)
+      while dir != worktrees_dir && dir.start_with?(worktrees_dir)
+        break unless Dir.exist?(dir) && (Dir.entries(dir) - %w[. ..]).empty?
+        Dir.rmdir(dir)
+        dir = File.dirname(dir)
+      end
+    end
+
     def delete_branch(force: false)
       branch_flag = force ? "-D" : "-d"
       _stdout, stderr, status = Open3.capture3(
-        "git", "-C", @repository.root, "branch", branch_flag, name
+        "git", "-C", @repository.root, "branch", branch_flag, @branch
       )
 
       if status.success?

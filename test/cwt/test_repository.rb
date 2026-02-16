@@ -94,6 +94,34 @@ module Cwt
       assert_equal "test_session_", result[:worktree].name
     end
 
+    def test_create_worktree_with_slashes
+      repo = Repository.new(@tmpdir)
+      result = repo.create_worktree("feat/implement-foo")
+
+      assert result[:success]
+      assert_equal "feat/implement-foo", result[:worktree].name
+      assert_equal "feat/implement-foo", result[:worktree].branch
+      assert Dir.exist?(File.join(@tmpdir, ".worktrees", "feat", "implement-foo"))
+    end
+
+    def test_create_worktree_sanitizes_consecutive_slashes
+      repo = Repository.new(@tmpdir)
+      result = repo.create_worktree("feat//double-slash")
+
+      assert result[:success]
+      assert_equal "feat/double-slash", result[:worktree].name
+    end
+
+    def test_find_worktree_by_branch_name
+      repo = Repository.new(@tmpdir)
+      result = repo.create_worktree("feat/find-branch")
+      assert result[:success]
+
+      found = repo.find_worktree("feat/find-branch")
+      assert_instance_of Worktree, found
+      assert_equal "feat/find-branch", found.branch
+    end
+
     def test_create_worktree_marks_needs_setup
       repo = Repository.new(@tmpdir)
       result = repo.create_worktree("new-wt")

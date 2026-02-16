@@ -29,11 +29,18 @@ module Cwt
       FileUtils.rm_rf(@tmpdir)
     end
 
-    def test_name_returns_basename
+    def test_name_returns_relative_path
       result = @repo.create_worktree("my-worktree")
       assert result[:success]
 
       assert_equal "my-worktree", result[:worktree].name
+    end
+
+    def test_name_returns_full_relative_path_with_slashes
+      result = @repo.create_worktree("feat/my-feature")
+      assert result[:success]
+
+      assert_equal "feat/my-feature", result[:worktree].name
     end
 
     def test_path_is_absolute
@@ -202,6 +209,35 @@ module Cwt
       assert_equal "hash-test", hash[:branch]
       assert_equal true, hash[:dirty]
       assert_equal "2 hours ago", hash[:last_commit]
+    end
+
+    def test_delete_cleans_up_empty_parent_directories
+      result = @repo.create_worktree("feat/cleanup-test")
+      wt = result[:worktree]
+      wt.mark_setup_complete!
+
+      parent_dir = File.join(@repo.worktrees_dir, "feat")
+      assert Dir.exist?(parent_dir), "Parent dir should exist before delete"
+
+      wt.delete!(force: true)
+
+      refute Dir.exist?(parent_dir), "Empty parent dir should be removed after delete"
+    end
+
+    def test_delete_preserves_nonempty_parent_directories
+      result1 = @repo.create_worktree("feat/first")
+      result2 = @repo.create_worktree("feat/second")
+      result1[:worktree].mark_setup_complete!
+      result2[:worktree].mark_setup_complete!
+
+      parent_dir = File.join(@repo.worktrees_dir, "feat")
+      result1[:worktree].delete!(force: true)
+
+      assert Dir.exist?(parent_dir), "Parent dir should remain when siblings exist"
+
+      result2[:worktree].delete!(force: true)
+
+      refute Dir.exist?(parent_dir), "Parent dir should be removed when empty"
     end
 
     def test_cwt_root_env_var_is_set_for_setup
