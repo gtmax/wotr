@@ -102,6 +102,8 @@ module Cwt
 
       # Create worktree with new branch
       cmd = ["git", "-C", @root, "worktree", "add", "-b", safe_name, path]
+      base_branch = ENV["CWT_START_POINT"]
+      cmd << base_branch if base_branch && !base_branch.strip.empty?
       _stdout, stderr, status = Open3.capture3(*cmd)
 
       unless status.success?

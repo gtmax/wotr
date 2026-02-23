@@ -200,5 +200,39 @@ module Cwt
       found = repo.find_worktree("nonexistent")
       assert_nil found
     end
+
+    def test_create_worktree_uses_cwt_start_point
+      repo = Repository.new(@tmpdir)
+
+      # Create a side branch with a distinct commit
+      system("git checkout -q -b side-branch")
+      File.write("side.txt", "side content")
+      system("git add side.txt && git commit -q -m 'side commit'")
+      side_sha = `git rev-parse HEAD`.strip
+
+      # Go back to the default branch so HEAD differs from side-branch
+      system("git checkout -q master 2>/dev/null || git checkout -q main")
+
+      ENV["CWT_START_POINT"] = "side-branch"
+      result = repo.create_worktree("from-side")
+      ENV.delete("CWT_START_POINT")
+
+      assert result[:success], "Expected worktree creation to succeed: #{result[:error]}"
+
+      # The new worktree's HEAD should match side-branch, not the default branch
+      wt_sha = `git -C #{result[:worktree].path} rev-parse HEAD`.strip
+      assert_equal side_sha, wt_sha
+    end
+
+    def test_create_worktree_fails_with_invalid_cwt_start_point
+      repo = Repository.new(@tmpdir)
+
+      ENV["CWT_START_POINT"] = "nonexistent-branch"
+      result = repo.create_worktree("bad-base")
+      ENV.delete("CWT_START_POINT")
+
+      refute result[:success]
+      assert result[:error]
+    end
   end
 end

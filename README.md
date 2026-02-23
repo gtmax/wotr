@@ -69,6 +69,14 @@ npm ci
 echo "Ready to rock!"
 ```
 
+### Base Branch
+
+By default, new worktrees branch off of `HEAD`. To always branch from a specific starting point (e.g., `main`), set the `CWT_START_POINT` environment variable:
+
+```bash
+export CWT_START_POINT=main
+```
+
 ## 🎮 Usage
 
 Run `cwt` in the root of any Git repository.
