@@ -40,7 +40,7 @@ module Cwt
       )
 
       draw_header(tui, frame, header_area)
-      draw_list(model, tui, frame, list_area)
+      draw_table(model, tui, frame, list_area)
       draw_footer(model, tui, frame, footer_area)
 
       return unless model.mode == :creating
@@ -72,22 +72,31 @@ module Cwt
       frame.render_widget(title, area)
     end
 
-    def self.draw_list(model, tui, frame, area)
-      items = model.visible_worktrees.map do |wt|
-        # Status Icons
+    def self.draw_table(model, tui, frame, area)
+      rows = model.visible_worktrees.map do |wt|
         status_icon = wt.dirty ? '●' : ' '
         status_style = wt.dirty ? tui.style(**THEME[:dirty]) : tui.style(**THEME[:clean])
 
-        time = wt.last_commit || ''
-
-        # Consistent Column Widths
-        tui.text_line(spans: [
-          tui.text_span(content: " #{status_icon} ", style: status_style),
-          tui.text_span(content: wt.name.ljust(25), style: tui.style(modifiers: [:bold])),
-          tui.text_span(content: (wt.branch || 'HEAD').ljust(25), style: tui.style(**THEME[:dim])),
-          tui.text_span(content: time.rjust(15), style: tui.style(**THEME[:accent]))
+        tui.row(cells: [
+          tui.table_cell(content: " #{status_icon} ", style: status_style),
+          tui.table_cell(
+            content: tui.text_span(content: wt.name, style: tui.style(modifiers: [:bold]))
+          ),
+          tui.table_cell(
+            content: tui.text_span(content: wt.branch || 'HEAD', style: tui.style(**THEME[:dim]))
+          ),
+          tui.table_cell(
+            content: tui.text_span(content: (wt.last_commit || ''), style: tui.style(**THEME[:accent]))
+          )
         ])
       end
+
+      widths = [
+        tui.constraint_length(3),
+        tui.constraint_fill(1),
+        tui.constraint_fill(1),
+        tui.constraint_length(15)
+      ]
 
       # Dynamic Title based on context
       title_content = if model.mode == :filtering
@@ -102,10 +111,11 @@ module Cwt
                         tui.text_line(spans: [tui.text_span(content: ' SESSIONS ', style: tui.style(**THEME[:dim]))])
                       end
 
-      list = tui.list(
-        items: items,
-        selected_index: model.selection_index,
-        highlight_style: tui.style(**THEME[:selection]),
+      table = tui.table(
+        rows: rows,
+        widths: widths,
+        selected_row: model.selection_index,
+        row_highlight_style: tui.style(**THEME[:selection]),
         highlight_symbol: '▎',
         block: tui.block(
           titles: [{ content: title_content }],
@@ -114,7 +124,7 @@ module Cwt
         )
       )
 
-      frame.render_widget(list, area)
+      frame.render_widget(table, area)
     end
 
     def self.draw_footer(model, tui, frame, area)
