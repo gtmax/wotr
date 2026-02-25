@@ -68,6 +68,8 @@ module Cwt
           cmd = nil
           if event.key?
             cmd = Update.handle(model, { type: :key_press, key: event })
+          elsif event.paste?
+            cmd = Update.handle(model, { type: :paste, content: event.content })
           elsif event.resize?
             # Layout auto-handles
           elsif event.none?

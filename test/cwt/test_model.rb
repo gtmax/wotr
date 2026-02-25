@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "cwt/model"
+require "cwt/update"
 require "cwt/repository"
 require "cwt/worktree"
 require "mocha/minitest"
@@ -127,6 +128,56 @@ module Cwt
 
       @model.move_selection(1)
       assert_equal wt2, @model.selected_worktree
+    end
+
+    def test_paste_appends_to_input_buffer_in_creating_mode
+      @model.set_mode(:creating)
+
+      Update.handle_paste(@model, "my-branch-name")
+
+      assert_equal "my-branch-name", @model.input_buffer
+    end
+
+    def test_paste_appends_to_filter_in_filtering_mode
+      @model.set_mode(:filtering)
+
+      Update.handle_paste(@model, "feature")
+
+      assert_equal "feature", @model.filter_query
+    end
+
+    def test_paste_uses_first_line_only
+      @model.set_mode(:creating)
+
+      Update.handle_paste(@model, "first-line\nsecond-line\nthird-line")
+
+      assert_equal "first-line", @model.input_buffer
+    end
+
+    def test_paste_strips_whitespace
+      @model.set_mode(:creating)
+
+      Update.handle_paste(@model, "  my-branch  ")
+
+      assert_equal "my-branch", @model.input_buffer
+    end
+
+    def test_paste_ignored_in_normal_mode
+      @model.set_mode(:normal)
+
+      Update.handle_paste(@model, "some-text")
+
+      assert_equal "", @model.input_buffer
+      assert_equal "", @model.filter_query
+    end
+
+    def test_paste_appends_to_existing_input
+      @model.set_mode(:creating)
+      @model.input_append("prefix-")
+
+      Update.handle_paste(@model, "suffix")
+
+      assert_equal "prefix-suffix", @model.input_buffer
     end
   end
 end
