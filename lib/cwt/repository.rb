@@ -100,10 +100,14 @@ module Cwt
       # Ensure parent directories exist (e.g. .worktrees/feat/ for feat/my-feature)
       FileUtils.mkdir_p(File.dirname(path))
 
-      # Create worktree with new branch
-      cmd = ["git", "-C", @root, "worktree", "add", "-b", safe_name, path]
-      base_branch = ENV["CWT_START_POINT"]
-      cmd << base_branch if base_branch && !base_branch.strip.empty?
+      # Create worktree — reuse existing branch if it exists, otherwise create new
+      if branch_exists?(safe_name)
+        cmd = ["git", "-C", @root, "worktree", "add", path, safe_name]
+      else
+        cmd = ["git", "-C", @root, "worktree", "add", "-b", safe_name, path]
+        base_branch = ENV["CWT_START_POINT"]
+        cmd << base_branch if base_branch && !base_branch.strip.empty?
+      end
       _stdout, stderr, status = Open3.capture3(*cmd)
 
       unless status.success?
@@ -125,6 +129,19 @@ module Cwt
     end
 
     private
+
+    def branch_exists?(name)
+      _stdout, _stderr, status = Open3.capture3(
+        "git",
+        "-C",
+        @root,
+        "rev-parse",
+        "--verify",
+        "refs/heads/#{name}"
+      )
+
+      status.success?
+    end
 
     def parse_porcelain(output)
       worktrees = []

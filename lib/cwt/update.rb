@@ -10,6 +10,8 @@ module Cwt
         model.quit
       when :key_press
         handle_key(model, message[:key])
+      when :paste
+        handle_paste(model, message[:content])
       when :refresh_list
         refresh_list(model)
         :start_background_fetch
@@ -123,6 +125,15 @@ module Cwt
           return { type: :refresh_list }
         end
       end
+      nil
+    end
+
+    def self.handle_paste(model, content)
+      return nil unless model.mode == :creating || model.mode == :filtering
+
+      # Use first line only, strip whitespace
+      text = content.split("\n", 2).first.to_s.strip
+      model.input_append(text)
       nil
     end
 

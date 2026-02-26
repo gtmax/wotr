@@ -234,5 +234,31 @@ module Cwt
       refute result[:success]
       assert result[:error]
     end
+
+    def test_create_worktree_reuses_existing_branch
+      repo = Repository.new(@tmpdir)
+
+      # Create a branch with a distinct commit
+      system("git checkout -q -b existing-branch")
+      File.write("existing.txt", "existing content")
+      system("git add existing.txt && git commit -q -m 'existing commit'")
+      branch_sha = `git rev-parse HEAD`.strip
+
+      # Go back to the default branch
+      system("git checkout -q master 2>/dev/null || git checkout -q main")
+
+      # Create worktree for the already-existing branch
+      result = repo.create_worktree("existing-branch")
+
+      assert result[:success], "Expected worktree creation to succeed: #{result[:error]}"
+      assert_equal "existing-branch", result[:worktree].branch
+
+      # The worktree should be on the existing branch's commit
+      wt_sha = `git -C #{result[:worktree].path} rev-parse HEAD`.strip
+      assert_equal branch_sha, wt_sha
+
+      # The file from the existing branch should be present
+      assert File.exist?(File.join(result[:worktree].path, "existing.txt"))
+    end
   end
 end
