@@ -8,25 +8,17 @@ require "fileutils"
 
 module Cwt
   class TestWorktree < Minitest::Test
+    include GitRepoTestHelper
+
+    parallelize_me!
+
     def setup
-      @tmpdir = Dir.mktmpdir("cwt-test-")
-      @original_dir = Dir.pwd
-      Dir.chdir(@tmpdir)
-
-      # Initialize a git repo with an initial commit
-      system("git init -q")
-      system("git config user.email 'test@test.com'")
-      system("git config user.name 'Test User'")
-      File.write("README.md", "# Test Repo")
-      system("git add README.md")
-      system("git commit -q -m 'Initial commit'")
-
+      create_test_repo
       @repo = Repository.new(@tmpdir)
     end
 
     def teardown
-      Dir.chdir(@original_dir)
-      FileUtils.rm_rf(@tmpdir)
+      cleanup_test_repo
     end
 
     def test_name_returns_relative_path

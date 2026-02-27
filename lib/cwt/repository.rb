@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'open3'
+require 'git'
 require 'fileutils'
 
 module Cwt
@@ -8,26 +8,24 @@ module Cwt
     WORKTREE_DIR = ".worktrees"
     CONFIG_DIR = ".cwt"
 
-    attr_reader :root
+    attr_reader :root, :git
 
     # Find repo root from any path (including from within worktrees)
     def self.discover(start_path = Dir.pwd)
-      Dir.chdir(start_path) do
-        stdout, status = Open3.capture2("git", "rev-parse", "--path-format=absolute", "--git-common-dir")
-        return nil unless status.success?
+      output = ::Git::Lib.new.send(:command, 'rev-parse',
+        '--path-format=absolute', '--git-common-dir', chdir: start_path)
+      git_common_dir = output.strip
+      return nil if git_common_dir.empty?
 
-        git_common_dir = stdout.strip
-        return nil if git_common_dir.empty?
-
-        # --git-common-dir returns /path/to/repo/.git, so strip the /.git
-        new(git_common_dir.sub(%r{/\.git$}, ''))
-      end
-    rescue Errno::ENOENT
+      # --git-common-dir returns /path/to/repo/.git, so strip the /.git
+      new(git_common_dir.sub(%r{/\.git$}, ''))
+    rescue ::Git::Error, Errno::ENOENT
       nil
     end
 
     def initialize(root)
       @root = File.expand_path(root)
+      @git = ::Git.open(@root)
     end
 
     def worktrees_dir
@@ -58,10 +56,9 @@ module Cwt
     def worktrees
       require_relative 'worktree'
 
-      stdout, status = Open3.capture2("git", "-C", @root, "worktree", "list", "--porcelain")
-      return [] unless status.success?
+      output = @git.lib.send(:command, 'worktree', 'list', '--porcelain')
 
-      parse_porcelain(stdout).map do |data|
+      parse_porcelain(output).map do |data|
         Worktree.new(
           repository: self,
           path: data[:path],
@@ -69,6 +66,8 @@ module Cwt
           sha: data[:sha]
         )
       end
+    rescue ::Git::Error
+      []
     end
 
     def find_worktree(name_or_path)
@@ -102,16 +101,12 @@ module Cwt
 
       # Create worktree — reuse existing branch if it exists, otherwise create new
       if branch_exists?(safe_name)
-        cmd = ["git", "-C", @root, "worktree", "add", path, safe_name]
+        @git.lib.worktree_add(path, safe_name)
       else
-        cmd = ["git", "-C", @root, "worktree", "add", "-b", safe_name, path]
+        args = ['worktree', 'add', '-b', safe_name, path]
         base_branch = ENV["CWT_START_POINT"]
-        cmd << base_branch if base_branch && !base_branch.strip.empty?
-      end
-      _stdout, stderr, status = Open3.capture3(*cmd)
-
-      unless status.success?
-        return { success: false, error: stderr }
+        args << base_branch if base_branch && !base_branch.strip.empty?
+        @git.lib.send(:worktree_command, *args)
       end
 
       # Create worktree object
@@ -126,21 +121,18 @@ module Cwt
       worktree.mark_needs_setup!
 
       { success: true, worktree: worktree }
+    rescue ::Git::Error => e
+      stderr = e.respond_to?(:result) ? e.result.stderr.strip : e.message
+      { success: false, error: stderr }
     end
 
     private
 
     def branch_exists?(name)
-      _stdout, _stderr, status = Open3.capture3(
-        "git",
-        "-C",
-        @root,
-        "rev-parse",
-        "--verify",
-        "refs/heads/#{name}"
-      )
-
-      status.success?
+      @git.lib.rev_parse("refs/heads/#{name}")
+      true
+    rescue ::Git::Error
+      false
     end
 
     def parse_porcelain(output)

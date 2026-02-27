@@ -27,6 +27,7 @@ Gem::Specification.new do |spec|
   spec.executables = ['cwt']
   spec.require_paths = ['lib']
 
+  spec.add_dependency 'git'
   spec.add_dependency 'ratatui_ruby'
 
   # For more information and examples about making a new gem, check out our

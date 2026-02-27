@@ -134,7 +134,7 @@ module Cwt
       # Batch fetch commit ages in background thread
       Thread.new do
         shas = worktrees.map(&:sha).compact
-        ages = Git.get_commit_ages(shas, repo_root: model.repository.root)
+        ages = Git.get_commit_ages(shas, git: model.repository.git)
 
         worktrees.each do |wt|
           if (age = ages[wt.sha])

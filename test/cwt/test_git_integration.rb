@@ -9,26 +9,17 @@ require "fileutils"
 
 module Cwt
   class TestGitIntegration < Minitest::Test
+    include GitRepoTestHelper
+
+    parallelize_me!
+
     def setup
-      # Create a temporary directory for our test git repo
-      @tmpdir = Dir.mktmpdir("cwt-test-")
-      @original_dir = Dir.pwd
-      Dir.chdir(@tmpdir)
-
-      # Initialize a git repo with an initial commit
-      system("git init -q")
-      system("git config user.email 'test@test.com'")
-      system("git config user.name 'Test User'")
-      File.write("README.md", "# Test Repo")
-      system("git add README.md")
-      system("git commit -q -m 'Initial commit'")
-
+      create_test_repo
       @repo = Repository.new(@tmpdir)
     end
 
     def teardown
-      Dir.chdir(@original_dir)
-      FileUtils.rm_rf(@tmpdir)
+      cleanup_test_repo
     end
 
     # ========== Setup Marker Tests ==========
@@ -77,9 +68,9 @@ module Cwt
       wt = result[:worktree]
 
       # Create files to symlink in root
-      File.write(".env", "SECRET=value")
-      FileUtils.mkdir_p("node_modules")
-      File.write("node_modules/.keep", "")
+      File.write(File.join(@tmpdir, ".env"), "SECRET=value")
+      FileUtils.mkdir_p(File.join(@tmpdir, "node_modules"))
+      File.write(File.join(@tmpdir, "node_modules", ".keep"), "")
 
       # No .cwt/setup script exists
       wt.run_setup!(visible: false)
@@ -96,7 +87,7 @@ module Cwt
       wt = result[:worktree]
 
       # Create files to symlink in root
-      File.write(".env", "SECRET=value")
+      File.write(File.join(@tmpdir, ".env"), "SECRET=value")
 
       # Create .cwt/setup script (does nothing)
       FileUtils.mkdir_p(@repo.config_dir)
@@ -298,10 +289,8 @@ module Cwt
       result = @repo.create_worktree("discover-test")
       wt = result[:worktree]
 
-      Dir.chdir(wt.path) do
-        discovered = Repository.discover
-        assert_equal File.realpath(@tmpdir), File.realpath(discovered.root)
-      end
+      discovered = Repository.discover(wt.path)
+      assert_equal File.realpath(@tmpdir), File.realpath(discovered.root)
     end
   end
 end

@@ -7,27 +7,18 @@ require "fileutils"
 
 module Cwt
   class TestRepository < Minitest::Test
-    def setup
-      @tmpdir = Dir.mktmpdir("cwt-test-")
-      @original_dir = Dir.pwd
-      Dir.chdir(@tmpdir)
+    include GitRepoTestHelper
 
-      # Initialize a git repo with an initial commit
-      system("git init -q")
-      system("git config user.email 'test@test.com'")
-      system("git config user.name 'Test User'")
-      File.write("README.md", "# Test Repo")
-      system("git add README.md")
-      system("git commit -q -m 'Initial commit'")
+    def setup
+      create_test_repo
     end
 
     def teardown
-      Dir.chdir(@original_dir)
-      FileUtils.rm_rf(@tmpdir)
+      cleanup_test_repo
     end
 
     def test_discover_finds_repo_root
-      repo = Repository.discover
+      repo = Repository.discover(@tmpdir)
 
       assert_instance_of Repository, repo
       # Use realpath for macOS /var -> /private/var symlink
@@ -35,10 +26,10 @@ module Cwt
     end
 
     def test_discover_from_subdir_returns_root
-      FileUtils.mkdir_p("subdir/nested")
-      Dir.chdir("subdir/nested")
+      subdir = File.join(@tmpdir, "subdir", "nested")
+      FileUtils.mkdir_p(subdir)
 
-      repo = Repository.discover
+      repo = Repository.discover(subdir)
 
       assert_instance_of Repository, repo
       assert_equal File.realpath(@tmpdir), File.realpath(repo.root)
@@ -51,18 +42,14 @@ module Cwt
       assert result[:success]
 
       # Discover from inside worktree should return main repo root
-      Dir.chdir(result[:worktree].path) do
-        discovered = Repository.discover
-        assert_equal File.realpath(@tmpdir), File.realpath(discovered.root)
-      end
+      discovered = Repository.discover(result[:worktree].path)
+      assert_equal File.realpath(@tmpdir), File.realpath(discovered.root)
     end
 
     def test_discover_returns_nil_outside_git_repo
       Dir.mktmpdir do |non_git_dir|
-        Dir.chdir(non_git_dir) do
-          repo = Repository.discover
-          assert_nil repo
-        end
+        repo = Repository.discover(non_git_dir)
+        assert_nil repo
       end
     end
 
@@ -205,13 +192,14 @@ module Cwt
       repo = Repository.new(@tmpdir)
 
       # Create a side branch with a distinct commit
-      system("git checkout -q -b side-branch")
-      File.write("side.txt", "side content")
-      system("git add side.txt && git commit -q -m 'side commit'")
-      side_sha = `git rev-parse HEAD`.strip
+      system("git", "-C", @tmpdir, "checkout", "-q", "-b", "side-branch")
+      File.write(File.join(@tmpdir, "side.txt"), "side content")
+      system("git", "-C", @tmpdir, "add", "side.txt")
+      system("git", "-C", @tmpdir, "commit", "-q", "-m", "side commit")
+      side_sha = `git -C #{@tmpdir} rev-parse HEAD`.strip
 
       # Go back to the default branch so HEAD differs from side-branch
-      system("git checkout -q master 2>/dev/null || git checkout -q main")
+      system("git -C #{@tmpdir} checkout -q master 2>/dev/null || git -C #{@tmpdir} checkout -q main")
 
       ENV["CWT_START_POINT"] = "side-branch"
       result = repo.create_worktree("from-side")
@@ -239,13 +227,14 @@ module Cwt
       repo = Repository.new(@tmpdir)
 
       # Create a branch with a distinct commit
-      system("git checkout -q -b existing-branch")
-      File.write("existing.txt", "existing content")
-      system("git add existing.txt && git commit -q -m 'existing commit'")
-      branch_sha = `git rev-parse HEAD`.strip
+      system("git", "-C", @tmpdir, "checkout", "-q", "-b", "existing-branch")
+      File.write(File.join(@tmpdir, "existing.txt"), "existing content")
+      system("git", "-C", @tmpdir, "add", "existing.txt")
+      system("git", "-C", @tmpdir, "commit", "-q", "-m", "existing commit")
+      branch_sha = `git -C #{@tmpdir} rev-parse HEAD`.strip
 
       # Go back to the default branch
-      system("git checkout -q master 2>/dev/null || git checkout -q main")
+      system("git -C #{@tmpdir} checkout -q master 2>/dev/null || git -C #{@tmpdir} checkout -q main")
 
       # Create worktree for the already-existing branch
       result = repo.create_worktree("existing-branch")

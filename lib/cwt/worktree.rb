@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'open3'
+require 'git'
 require 'fileutils'
 
 module Cwt
@@ -59,9 +59,11 @@ module Cwt
       puts "\e[1;36m=== Running .cwt/teardown ===\e[0m"
       puts
 
-      success = Dir.chdir(@path) do
-        system({ "CWT_ROOT" => File.realpath(@repository.root) }, @repository.teardown_script_path)
-      end
+      success = system(
+        { "CWT_ROOT" => File.realpath(@repository.root) },
+        @repository.teardown_script_path,
+        chdir: @path
+      )
 
       puts
 
@@ -85,13 +87,15 @@ module Cwt
 
       # Step 2: Remove Worktree
       if exists?
-        wt_cmd = ["git", "-C", @repository.root, "worktree", "remove", @path]
-        wt_cmd << "--force" if force
-
-        _stdout, stderr, status = Open3.capture3(*wt_cmd)
-
-        unless status.success?
-          return { success: false, error: stderr.strip }
+        begin
+          if force
+            @repository.git.lib.send(:worktree_command, 'worktree', 'remove', @path, '--force')
+          else
+            @repository.git.lib.worktree_remove(@path)
+          end
+        rescue ::Git::Error => e
+          stderr = e.respond_to?(:result) ? e.result.stderr.strip : e.message
+          return { success: false, error: stderr }
         end
       end
 
@@ -104,10 +108,9 @@ module Cwt
 
     # Fetch status (dirty flag) from git
     def fetch_status!
-      stdout, status = Open3.capture2(
-        "git", "--no-optional-locks", "-C", @path, "status", "--porcelain"
-      )
-      @dirty = status.success? && !stdout.strip.empty?
+      wt_git = ::Git.open(@path)
+      output = wt_git.lib.send(:command, '--no-optional-locks', 'status', '--porcelain')
+      @dirty = !output.strip.empty?
       @dirty
     rescue StandardError
       @dirty = false
@@ -136,9 +139,11 @@ module Cwt
         puts
       end
 
-      success = Dir.chdir(@path) do
-        system({ "CWT_ROOT" => File.realpath(@repository.root) }, @repository.setup_script_path)
-      end
+      success = system(
+        { "CWT_ROOT" => File.realpath(@repository.root) },
+        @repository.setup_script_path,
+        chdir: @path
+      )
 
       puts if visible
 
@@ -188,19 +193,20 @@ module Cwt
     end
 
     def delete_branch(force: false)
-      branch_flag = force ? "-D" : "-d"
-      _stdout, stderr, status = Open3.capture3(
-        "git", "-C", @repository.root, "branch", branch_flag, @branch
-      )
+      if force
+        @repository.git.lib.branch_delete(@branch)
+      else
+        @repository.git.lib.send(:command, 'branch', '-d', @branch)
+      end
+      { success: true }
+    rescue ::Git::Error => e
+      stderr = e.respond_to?(:result) ? e.result.stderr.strip : e.message
 
-      if status.success?
-        { success: true }
-      elsif force
-        # Force delete failed - maybe branch doesn't exist
+      if force
         if stderr.include?("not found")
           { success: true }
         else
-          { success: false, error: "Worktree removed, but branch delete failed: #{stderr.strip}" }
+          { success: false, error: "Worktree removed, but branch delete failed: #{stderr}" }
         end
       else
         # Safe delete failed (unmerged commits) - worktree gone but branch kept

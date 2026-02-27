@@ -7,15 +7,21 @@ require "mocha/minitest"
 module Cwt
   class TestGit < Minitest::Test
     def test_get_commit_ages_empty_shas
-      ages = Git.get_commit_ages([])
+      mock_git = mock('git')
+      ages = Git.get_commit_ages([], git: mock_git)
       assert_equal({}, ages)
     end
 
     def test_get_commit_ages_parses_output
-      Open3.expects(:capture2)
-           .returns(["abc123|2 hours ago\ndef456|3 days ago\n", mock(success?: true)])
+      mock_lib = mock('lib')
+      mock_lib.expects(:send)
+           .with(:command, '--no-optional-locks', 'show', '-s', '--format=%H|%cr', 'abc123', 'def456')
+           .returns("abc123|2 hours ago\ndef456|3 days ago")
 
-      ages = Git.get_commit_ages(["abc123", "def456"])
+      mock_git = mock('git')
+      mock_git.stubs(:lib).returns(mock_lib)
+
+      ages = Git.get_commit_ages(["abc123", "def456"], git: mock_git)
 
       assert_equal "2 hours ago", ages["abc123"]
       assert_equal "3 days ago", ages["def456"]
@@ -23,10 +29,17 @@ module Cwt
 
     def test_get_status_returns_dirty_hash
       path = "/some/path"
+      Dir.stubs(:exist?).with(path).returns(true)
 
-      Open3.expects(:capture2)
-           .with("git", "--no-optional-locks", "-C", path, "status", "--porcelain")
-           .returns(["M file.txt\n", mock(success?: true)])
+      mock_lib = mock('lib')
+      mock_lib.expects(:send)
+           .with(:command, '--no-optional-locks', 'status', '--porcelain')
+           .returns("M file.txt")
+
+      mock_git = mock('git')
+      mock_git.stubs(:lib).returns(mock_lib)
+
+      ::Git.expects(:open).with(path).returns(mock_git)
 
       result = Git.get_status(path)
       assert result[:dirty]
@@ -34,29 +47,30 @@ module Cwt
 
     def test_get_status_returns_clean_hash
       path = "/some/path"
+      Dir.stubs(:exist?).with(path).returns(true)
 
-      Open3.expects(:capture2)
-           .with("git", "--no-optional-locks", "-C", path, "status", "--porcelain")
-           .returns(["", mock(success?: true)])
+      mock_lib = mock('lib')
+      mock_lib.expects(:send)
+           .with(:command, '--no-optional-locks', 'status', '--porcelain')
+           .returns("")
+
+      mock_git = mock('git')
+      mock_git.stubs(:lib).returns(mock_lib)
+
+      ::Git.expects(:open).with(path).returns(mock_git)
 
       result = Git.get_status(path)
       refute result[:dirty]
     end
 
     def test_prune_worktrees
-      Open3.expects(:capture2)
-           .with("git", "worktree", "prune")
-           .returns(["", nil])
+      mock_lib = mock('lib')
+      mock_lib.expects(:worktree_prune)
 
-      Git.prune_worktrees
-    end
+      mock_git = mock('git')
+      mock_git.stubs(:lib).returns(mock_lib)
 
-    def test_prune_worktrees_with_repo_root
-      Open3.expects(:capture2)
-           .with("git", "-C", "/repo/root", "worktree", "prune")
-           .returns(["", nil])
-
-      Git.prune_worktrees(repo_root: "/repo/root")
+      Git.prune_worktrees(git: mock_git)
     end
   end
 end
