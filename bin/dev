@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+set -e
+
+COMMAND="${1}"
+REQUIRED_RUBY="3.2.0"
+BREW_RUBY="/opt/homebrew/opt/ruby/bin/ruby"
+BREW_GEM="/opt/homebrew/opt/ruby/bin/gem"
+
+# Returns the path to a ruby binary that meets the version requirement, or empty string
+find_ruby() {
+  for candidate in "$(which ruby 2>/dev/null)" "$BREW_RUBY"; do
+    [ -x "$candidate" ] || continue
+    version=$("$candidate" -e 'print RUBY_VERSION' 2>/dev/null)
+    if ruby_meets_requirement "$version" "$REQUIRED_RUBY"; then
+      echo "$candidate"
+      return
+    fi
+  done
+}
+
+# Compare semantic versions: returns 0 if $1 >= $2
+ruby_meets_requirement() {
+  printf '%s\n%s\n' "$2" "$1" | sort -V -C
+}
+
+ensure_ruby() {
+  RUBY=$(find_ruby)
+  if [ -n "$RUBY" ]; then
+    GEM=$(dirname "$RUBY")/gem
+    return 0
+  fi
+
+  echo "Ruby $REQUIRED_RUBY+ is required but not found."
+  if ! command -v brew >/dev/null 2>&1; then
+    echo "Install Ruby manually: https://www.ruby-lang.org/en/documentation/installation/"
+    exit 1
+  fi
+
+  printf "Install Ruby via Homebrew? [y/N] "
+  read -r REPLY
+  if [[ "$REPLY" =~ ^[Yy]$ ]]; then
+    brew install ruby
+    RUBY="$BREW_RUBY"
+    GEM="$BREW_GEM"
+  else
+    echo "Aborted."
+    exit 1
+  fi
+}
+
+case "$COMMAND" in
+  install)
+    ensure_ruby
+    echo "Using Ruby $("$RUBY" -e 'print RUBY_VERSION')"
+    echo "Building gem..."
+    "$RUBY" -S gem build claude-worktree.gemspec
+    echo "Installing gem..."
+    "$GEM" install claude-worktree-*.gem
+    rm -f claude-worktree-*.gem
+    # Symlink into /opt/homebrew/bin so cwt is on PATH
+    GEM_BIN=$("$GEM" environment | awk '/EXECUTABLE DIRECTORY/ {print $NF}')
+    if [ -f "$GEM_BIN/cwt" ] && [ -d "/opt/homebrew/bin" ]; then
+      ln -sf "$GEM_BIN/cwt" /opt/homebrew/bin/cwt
+      echo "Symlinked cwt → /opt/homebrew/bin/cwt"
+    fi
+    echo "Done. Run 'cwt' to launch."
+    ;;
+  *)
+    echo "Usage: bin/dev <command>"
+    echo ""
+    echo "Commands:"
+    echo "  install   Build and install cwt locally (installs Ruby via Homebrew if needed)"
+    ;;
+esac

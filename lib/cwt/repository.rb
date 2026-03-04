@@ -38,8 +38,16 @@ module Cwt
       File.join(@root, CONFIG_DIR)
     end
 
+    def user_config_dir
+      File.join(Dir.home, CONFIG_DIR)
+    end
+
     def setup_script_path
       File.join(config_dir, "setup")
+    end
+
+    def user_setup_script_path
+      File.join(user_config_dir, "setup")
     end
 
     def teardown_script_path
@@ -52,6 +60,10 @@ module Cwt
 
     def has_setup_script?
       File.exist?(setup_script_path) && File.executable?(setup_script_path)
+    end
+
+    def has_user_setup_script?
+      File.exist?(user_setup_script_path) && File.executable?(user_setup_script_path)
     end
 
     def has_teardown_script?

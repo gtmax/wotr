@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# cwt-defaults — apply cwt's built-in default worktree setup.
+#
+# Call this from ~/.cwt/setup or .cwt/setup to opt into the defaults
+# while still running your own custom steps:
+#
+#   #!/bin/bash
+#   cwt-defaults        # symlink .env, node_modules, .claude
+#   pnpm install        # then your custom steps
+#
+# Requires CWT_ROOT to be set (done automatically by cwt).
+
+set -e
+
+if [ -z "$CWT_ROOT" ]; then
+  echo "cwt-defaults: CWT_ROOT is not set. Run this from within a cwt setup hook." >&2
+  exit 1
+fi
+
+for file in .env node_modules .claude; do
+  if [ -e "$CWT_ROOT/$file" ] && [ ! -e "$file" ]; then
+    ln -sf "$CWT_ROOT/$file" "$file"
+    echo "  Symlinked $file"
+  fi
+done

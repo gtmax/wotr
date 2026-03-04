@@ -41,11 +41,19 @@ module Cwt
       File.delete(setup_marker_path) if File.exist?(setup_marker_path)
     end
 
-    # Run setup script or default symlinks
-    # visible: true shows output to user, false runs silently
+    # Run setup scripts or default symlinks.
+    # Execution order:
+    #   1. ~/.cwt/setup  (user-level, if exists)
+    #   2. .cwt/setup    (repo-level, if exists)
+    #   3. defaults      (only if neither script exists)
+    # Scripts can call `cwt-defaults` to opt into default behaviour explicitly.
     def run_setup!(visible: true)
-      if @repository.has_setup_script?
-        run_custom_setup(visible: visible)
+      has_user = @repository.has_user_setup_script?
+      has_repo = @repository.has_setup_script?
+
+      if has_user || has_repo
+        run_hook(@repository.user_setup_script_path, label: "~/.cwt/setup", visible: visible) if has_user
+        run_hook(@repository.setup_script_path, label: ".cwt/setup", visible: visible) if has_repo
       else
         setup_default_symlinks
       end
@@ -70,17 +78,7 @@ module Cwt
     def run_teardown!
       return { ran: false } unless @repository.has_teardown_script?
 
-      puts "\e[1;36m=== Running .cwt/teardown ===\e[0m"
-      puts
-
-      success = system(
-        { "CWT_ROOT" => File.realpath(@repository.root) },
-        @repository.teardown_script_path,
-        chdir: @path
-      )
-
-      puts
-
+      success = run_hook(@repository.teardown_script_path, label: ".cwt/teardown")
       { ran: true, success: success }
     end
 
@@ -147,15 +145,15 @@ module Cwt
       File.join(@path, SETUP_MARKER)
     end
 
-    def run_custom_setup(visible: true)
+    def run_hook(script_path, label:, visible: true)
       if visible
-        puts "\e[1;36m=== Running .cwt/setup ===\e[0m"
+        puts "\e[1;36m=== Running #{label} ===\e[0m"
         puts
       end
 
       success = system(
         { "CWT_ROOT" => File.realpath(@repository.root) },
-        @repository.setup_script_path,
+        script_path,
         chdir: @path
       )
 
@@ -163,7 +161,7 @@ module Cwt
 
       unless success
         if visible
-          puts "\e[1;33mWarning: .cwt/setup failed (exit code: #{$?.exitstatus})\e[0m"
+          puts "\e[1;33mWarning: #{label} failed (exit code: #{$?.exitstatus})\e[0m"
           print "Press Enter to continue or Ctrl+C to abort..."
           begin
             STDIN.gets
