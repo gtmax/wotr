@@ -57,11 +57,31 @@ case "$COMMAND" in
     echo "Installing gem..."
     "$GEM" install claude-worktree-*.gem
     rm -f claude-worktree-*.gem
-    # Symlink into /opt/homebrew/bin so cwt is on PATH
+    # Symlink binaries into /opt/homebrew/bin so they are on PATH
     GEM_BIN=$("$GEM" environment | awk '/EXECUTABLE DIRECTORY/ {print $NF}')
-    if [ -f "$GEM_BIN/cwt" ] && [ -d "/opt/homebrew/bin" ]; then
-      ln -sf "$GEM_BIN/cwt" /opt/homebrew/bin/cwt
-      echo "Symlinked cwt → /opt/homebrew/bin/cwt"
+    if [ -d "/opt/homebrew/bin" ]; then
+      for bin in cwt cwt-defaults; do
+        if [ -f "$GEM_BIN/$bin" ]; then
+          ln -sf "$GEM_BIN/$bin" "/opt/homebrew/bin/$bin"
+          echo "Symlinked $bin → /opt/homebrew/bin/$bin"
+        fi
+      done
+    fi
+    # Create ~/.cwt/setup template if it doesn't exist yet
+    if [ ! -f "$HOME/.cwt/setup" ]; then
+      mkdir -p "$HOME/.cwt"
+      cat > "$HOME/.cwt/setup" <<'SETUP'
+#!/bin/bash
+# ~/.cwt/setup — runs when creating a new worktree in any repo.
+#
+# cwt-defaults symlinks .env, node_modules, and .claude from the repo root.
+# Remove it to opt out. Add your own steps below.
+cwt-defaults
+SETUP
+      chmod +x "$HOME/.cwt/setup"
+      echo "Created ~/.cwt/setup"
+    else
+      echo "~/.cwt/setup already exists, skipping."
     fi
     echo "Done. Run 'cwt' to launch."
     ;;
