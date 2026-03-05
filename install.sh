@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-REPO="gtmax/cwt"
+REPO="gtmax/wotr"
 REQUIRED_RUBY="3.2.0"
 BREW_RUBY="/opt/homebrew/opt/ruby/bin/ruby"
 BREW_GEM="/opt/homebrew/opt/ruby/bin/gem"
@@ -31,7 +31,7 @@ ensure_ruby() {
     return 0
   fi
 
-  echo "cwt requires Ruby $REQUIRED_RUBY+, which was not found."
+  echo "wotr requires Ruby $REQUIRED_RUBY+, which was not found."
   if ! command -v brew >/dev/null 2>&1; then
     echo "Please install Ruby $REQUIRED_RUBY+ manually: https://www.ruby-lang.org/en/documentation/installation/"
     exit 1
@@ -59,26 +59,26 @@ symlink_bin() {
 }
 
 install_user_setup() {
-  if [ ! -f "$HOME/.cwt/setup" ]; then
-    mkdir -p "$HOME/.cwt"
-    cat > "$HOME/.cwt/setup" <<'SETUP'
+  if [ ! -f "$HOME/.wotr/setup" ]; then
+    mkdir -p "$HOME/.wotr"
+    cat > "$HOME/.wotr/setup" <<'SETUP'
 #!/bin/bash
-# ~/.cwt/setup — runs when creating a new worktree in any repo.
+# ~/.wotr/setup — runs when creating a new worktree in any repo.
 #
-# cwt-defaults symlinks .env, node_modules, and .claude from the repo root.
+# wotr-defaults symlinks .env, node_modules, and .claude from the repo root.
 # Remove it to opt out. Add your own steps below.
-cwt-defaults
+wotr-defaults
 SETUP
-    chmod +x "$HOME/.cwt/setup"
-    echo "  Created ~/.cwt/setup"
+    chmod +x "$HOME/.wotr/setup"
+    echo "  Created ~/.wotr/setup"
   else
-    echo "  ~/.cwt/setup already exists, skipping."
+    echo "  ~/.wotr/setup already exists, skipping."
   fi
 }
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 
-echo "Installing cwt..."
+echo "Installing wotr..."
 echo
 
 # 1. Ruby
@@ -102,13 +102,13 @@ if [ -z "$LATEST_URL" ]; then
   if ! command -v git >/dev/null 2>&1; then
     echo "Error: git is required to build from source." >&2; exit 1
   fi
-  git clone --depth=1 "https://github.com/$REPO.git" "$TMP_DIR/cwt"
-  cd "$TMP_DIR/cwt"
-  "$RUBY" -S gem build claude-worktree.gemspec
-  GEM_FILE=$(ls claude-worktree-*.gem)
+  git clone --depth=1 "https://github.com/$REPO.git" "$TMP_DIR/wotr"
+  cd "$TMP_DIR/wotr"
+  "$RUBY" -S gem build wotr.gemspec
+  GEM_FILE=$(ls wotr-*.gem)
 else
-  curl -fsSL "$LATEST_URL" -o "$TMP_DIR/cwt.gem"
-  GEM_FILE="$TMP_DIR/cwt.gem"
+  curl -fsSL "$LATEST_URL" -o "$TMP_DIR/wotr.gem"
+  GEM_FILE="$TMP_DIR/wotr.gem"
 fi
 
 echo "Installing gem..."
@@ -117,12 +117,12 @@ echo
 
 # 3. Symlink binaries onto PATH
 GEM_BIN=$("$GEM" environment | awk '/EXECUTABLE DIRECTORY/ {print $NF}')
-symlink_bin "cwt" "$GEM_BIN"
-symlink_bin "cwt-defaults" "$GEM_BIN"
+symlink_bin "wotr" "$GEM_BIN"
+symlink_bin "wotr-defaults" "$GEM_BIN"
 echo
 
 # 4. User setup template
 install_user_setup
 echo
 
-echo "cwt installed. Run 'cwt' in any git repo to get started."
+echo "wotr installed. Run 'wotr' in any git repo to get started."

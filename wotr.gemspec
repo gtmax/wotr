@@ -1,30 +1,29 @@
 # frozen_string_literal: true
 
-require_relative 'lib/claude/worktree/version'
+require_relative 'lib/wotr/version'
 
 Gem::Specification.new do |spec|
-  spec.name = 'claude-worktree'
-  spec.version = Claude::Worktree::VERSION
+  spec.name = 'wotr'
+  spec.version = Wotr::VERSION
   spec.authors = ['Ben Garcia']
   spec.email = ['hey@bengarcia.dev']
 
   spec.summary = 'A TUI tool to manage Git Worktrees for AI coding agents.'
   spec.description = 'Manages git worktrees for Claude Code sessions.'
-  spec.homepage = 'https://github.com/bucket-robotics/claude-worktree'
+  spec.homepage = 'https://github.com/gtmax/wotr'
   spec.license = 'MIT'
   spec.required_ruby_version = '>= 3.2.0'
 
   spec.metadata['allowed_push_host'] = 'https://rubygems.org'
-  spec.metadata['homepage_uri'] = spec.homepage
-  spec.metadata['source_code_uri'] = 'https://github.com/bucket-robotics/claude-worktree'
-  spec.metadata['changelog_uri'] = 'https://github.com/bucket-robotics/claude-worktree/blob/main/CHANGELOG.md'
+  spec.metadata['source_code_uri'] = 'https://github.com/gtmax/wotr'
+  spec.metadata['changelog_uri'] = 'https://github.com/gtmax/wotr/blob/main/CHANGELOG.md'
 
   # Specify which files should be added to the gem when it is released.
   spec.files = Dir.chdir(__dir__) do
     Dir["{exe,lib,sig}/**/*", "README.md", "LICENSE.txt", "CHANGELOG.md", "CODE_OF_CONDUCT.md"]
   end
   spec.bindir = 'exe'
-  spec.executables = ['cwt', 'cwt-defaults']
+  spec.executables = ['wotr', 'wotr-defaults']
   spec.require_paths = ['lib']
 
   spec.add_dependency 'git'

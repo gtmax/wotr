@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require "cwt/repository"
+require "wotr/repository"
 require "tmpdir"
 require "fileutils"
 
-module Cwt
+module Wotr
   class TestRepository < Minitest::Test
     include GitRepoTestHelper
 
@@ -134,7 +134,7 @@ module Cwt
 
     def test_config_dir
       repo = Repository.new(@tmpdir)
-      assert_equal File.join(@tmpdir, ".cwt"), repo.config_dir
+      assert_equal File.join(@tmpdir, ".wotr"), repo.config_dir
     end
 
     def test_has_setup_script
@@ -188,7 +188,7 @@ module Cwt
       assert_nil found
     end
 
-    def test_create_worktree_uses_cwt_start_point
+    def test_create_worktree_uses_wotr_start_point
       repo = Repository.new(@tmpdir)
 
       # Create a side branch with a distinct commit
@@ -201,9 +201,9 @@ module Cwt
       # Go back to the default branch so HEAD differs from side-branch
       system("git -C #{@tmpdir} checkout -q master 2>/dev/null || git -C #{@tmpdir} checkout -q main")
 
-      ENV["CWT_START_POINT"] = "side-branch"
+      ENV["WOTR_START_POINT"] = "side-branch"
       result = repo.create_worktree("from-side")
-      ENV.delete("CWT_START_POINT")
+      ENV.delete("WOTR_START_POINT")
 
       assert result[:success], "Expected worktree creation to succeed: #{result[:error]}"
 
@@ -212,12 +212,12 @@ module Cwt
       assert_equal side_sha, wt_sha
     end
 
-    def test_create_worktree_fails_with_invalid_cwt_start_point
+    def test_create_worktree_fails_with_invalid_wotr_start_point
       repo = Repository.new(@tmpdir)
 
-      ENV["CWT_START_POINT"] = "nonexistent-branch"
+      ENV["WOTR_START_POINT"] = "nonexistent-branch"
       result = repo.create_worktree("bad-base")
-      ENV.delete("CWT_START_POINT")
+      ENV.delete("WOTR_START_POINT")
 
       refute result[:success]
       assert result[:error]

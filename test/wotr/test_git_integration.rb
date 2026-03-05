@@ -1,13 +1,13 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require "cwt/repository"
-require "cwt/worktree"
-require "cwt/git"
+require "wotr/repository"
+require "wotr/worktree"
+require "wotr/git"
 require "tmpdir"
 require "fileutils"
 
-module Cwt
+module Wotr
   class TestGitIntegration < Minitest::Test
     include GitRepoTestHelper
 
@@ -49,7 +49,7 @@ module Cwt
       result = @repo.create_worktree("test-session")
       wt = result[:worktree]
 
-      # Create .cwt/setup script
+      # Create .wotr/setup script
       FileUtils.mkdir_p(@repo.config_dir)
       File.write(@repo.setup_script_path, "#!/bin/bash\necho 'setup ran' > setup_ran.txt")
       FileUtils.chmod(0o755, @repo.setup_script_path)
@@ -59,7 +59,7 @@ module Cwt
 
       assert File.exist?(File.join(wt.path, "setup_ran.txt")),
              "Setup script should have created file in worktree"
-      assert_match(/Running .cwt\/setup/, output,
+      assert_match(/Running .wotr\/setup/, output,
              "Should show setup header")
     end
 
@@ -72,7 +72,7 @@ module Cwt
       FileUtils.mkdir_p(File.join(@tmpdir, "node_modules"))
       File.write(File.join(@tmpdir, "node_modules", ".keep"), "")
 
-      # No .cwt/setup script exists
+      # No .wotr/setup script exists
       wt.run_setup!(visible: false)
 
       # Check symlinks were created
@@ -89,7 +89,7 @@ module Cwt
       # Create files to symlink in root
       File.write(File.join(@tmpdir, ".env"), "SECRET=value")
 
-      # Create .cwt/setup script (does nothing)
+      # Create .wotr/setup script (does nothing)
       FileUtils.mkdir_p(@repo.config_dir)
       File.write(@repo.setup_script_path, "#!/bin/bash\n# do nothing")
       FileUtils.chmod(0o755, @repo.setup_script_path)
@@ -100,22 +100,22 @@ module Cwt
              ".env should NOT be symlinked when custom script exists"
     end
 
-    def test_cwt_root_env_var_is_set_for_setup
+    def test_wotr_root_env_var_is_set_for_setup
       result = @repo.create_worktree("test-session")
       wt = result[:worktree]
 
-      # Create .cwt/setup script that writes CWT_ROOT to a file
+      # Create .wotr/setup script that writes WOTR_ROOT to a file
       FileUtils.mkdir_p(@repo.config_dir)
-      File.write(@repo.setup_script_path, "#!/bin/bash\necho \"$CWT_ROOT\" > cwt_root.txt")
+      File.write(@repo.setup_script_path, "#!/bin/bash\necho \"$WOTR_ROOT\" > wotr_root.txt")
       FileUtils.chmod(0o755, @repo.setup_script_path)
 
       capture_io { wt.run_setup!(visible: true) }
 
-      root_file = File.join(wt.path, "cwt_root.txt")
-      assert File.exist?(root_file), "Script should have created cwt_root.txt"
+      root_file = File.join(wt.path, "wotr_root.txt")
+      assert File.exist?(root_file), "Script should have created wotr_root.txt"
       # Use realpath to handle macOS /var -> /private/var symlink
       assert_equal File.realpath(@tmpdir), File.read(root_file).strip,
-             "CWT_ROOT should be set to the repo root"
+             "WOTR_ROOT should be set to the repo root"
     end
 
     # ========== Teardown Tests ==========
@@ -124,16 +124,16 @@ module Cwt
       result = @repo.create_worktree("test-session")
       wt = result[:worktree]
 
-      # Create .cwt/teardown script using CWT_ROOT env var
+      # Create .wotr/teardown script using WOTR_ROOT env var
       FileUtils.mkdir_p(@repo.config_dir)
-      File.write(@repo.teardown_script_path, "#!/bin/bash\necho 'teardown ran' > \"$CWT_ROOT/teardown_ran.txt\"")
+      File.write(@repo.teardown_script_path, "#!/bin/bash\necho 'teardown ran' > \"$WOTR_ROOT/teardown_ran.txt\"")
       FileUtils.chmod(0o755, @repo.teardown_script_path)
 
       output = capture_io { wt.run_teardown! }.join
 
       assert File.exist?(File.join(@tmpdir, "teardown_ran.txt")),
              "Teardown script should have created file"
-      assert_match(/Running .cwt\/teardown/, output,
+      assert_match(/Running .wotr\/teardown/, output,
              "Should show teardown header")
     end
 
@@ -150,7 +150,7 @@ module Cwt
       result = @repo.create_worktree("test-session")
       wt = result[:worktree]
 
-      # Create .cwt/teardown script that succeeds
+      # Create .wotr/teardown script that succeeds
       FileUtils.mkdir_p(@repo.config_dir)
       File.write(@repo.teardown_script_path, "#!/bin/bash\nexit 0")
       FileUtils.chmod(0o755, @repo.teardown_script_path)
@@ -166,7 +166,7 @@ module Cwt
       result = @repo.create_worktree("test-session")
       wt = result[:worktree]
 
-      # Create .cwt/teardown script that fails
+      # Create .wotr/teardown script that fails
       FileUtils.mkdir_p(@repo.config_dir)
       File.write(@repo.teardown_script_path, "#!/bin/bash\nexit 1")
       FileUtils.chmod(0o755, @repo.teardown_script_path)
@@ -185,9 +185,9 @@ module Cwt
       wt = result[:worktree]
       wt.mark_setup_complete!
 
-      # Create .cwt/teardown script using CWT_ROOT env var
+      # Create .wotr/teardown script using WOTR_ROOT env var
       FileUtils.mkdir_p(@repo.config_dir)
-      File.write(@repo.teardown_script_path, "#!/bin/bash\necho 'teardown ran' > \"$CWT_ROOT/teardown_evidence.txt\"")
+      File.write(@repo.teardown_script_path, "#!/bin/bash\necho 'teardown ran' > \"$WOTR_ROOT/teardown_evidence.txt\"")
       FileUtils.chmod(0o755, @repo.teardown_script_path)
 
       capture_io { wt.delete!(force: true) }
@@ -201,7 +201,7 @@ module Cwt
       wt = result[:worktree]
       wt.mark_setup_complete!
 
-      # Create .cwt/teardown script that fails
+      # Create .wotr/teardown script that fails
       FileUtils.mkdir_p(@repo.config_dir)
       File.write(@repo.teardown_script_path, "#!/bin/bash\nexit 1")
       FileUtils.chmod(0o755, @repo.teardown_script_path)
@@ -219,7 +219,7 @@ module Cwt
       wt = result[:worktree]
       wt.mark_setup_complete!
 
-      # Create .cwt/teardown script that fails
+      # Create .wotr/teardown script that fails
       FileUtils.mkdir_p(@repo.config_dir)
       File.write(@repo.teardown_script_path, "#!/bin/bash\nexit 1")
       FileUtils.chmod(0o755, @repo.teardown_script_path)
@@ -240,10 +240,10 @@ module Cwt
       assert result[:success]
       assert wt.needs_setup?
 
-      # 2. Create setup and teardown scripts using CWT_ROOT env var
+      # 2. Create setup and teardown scripts using WOTR_ROOT env var
       FileUtils.mkdir_p(@repo.config_dir)
       File.write(@repo.setup_script_path, "#!/bin/bash\necho 'setup' > setup.log")
-      File.write(@repo.teardown_script_path, "#!/bin/bash\necho 'teardown' > \"$CWT_ROOT/teardown.log\"")
+      File.write(@repo.teardown_script_path, "#!/bin/bash\necho 'teardown' > \"$WOTR_ROOT/teardown.log\"")
       FileUtils.chmod(0o755, @repo.setup_script_path)
       FileUtils.chmod(0o755, @repo.teardown_script_path)
 

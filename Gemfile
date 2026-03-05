@@ -2,7 +2,7 @@
 
 source "https://rubygems.org"
 
-# Specify your gem's dependencies in claude-worktree.gemspec
+# Specify your gem's dependencies in wotr.gemspec
 gemspec
 
 gem "irb"

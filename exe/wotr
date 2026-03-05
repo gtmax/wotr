@@ -1,0 +1,11 @@
+#!/usr/bin/env ruby
+
+if RUBY_VERSION < "3.2.0"
+  warn "wotr requires Ruby 3.2.0 or newer (you have #{RUBY_VERSION})."
+  warn "Install a newer Ruby: brew install ruby"
+  exit 1
+end
+
+require_relative '../lib/wotr/app'
+
+Wotr::App.run

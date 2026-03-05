@@ -3,10 +3,10 @@
 require 'git'
 require 'fileutils'
 
-module Cwt
+module Wotr
   class Repository
     WORKTREE_DIR = ".worktrees"
-    CONFIG_DIR = ".cwt"
+    CONFIG_DIR = ".wotr"
 
     attr_reader :root, :git
 
@@ -39,7 +39,7 @@ module Cwt
     end
 
     def user_config_dir
-      File.join(Dir.home, CONFIG_DIR)
+      File.join(Dir.home, '.wotr')
     end
 
     def setup_script_path
@@ -125,7 +125,7 @@ module Cwt
         @git.lib.worktree_add(path, safe_name)
       else
         args = ['worktree', 'add', '-b', safe_name, path]
-        base_branch = ENV["CWT_START_POINT"]
+        base_branch = ENV["WOTR_START_POINT"]
         args << base_branch if base_branch && !base_branch.strip.empty?
         @git.lib.send(:worktree_command, *args)
       end

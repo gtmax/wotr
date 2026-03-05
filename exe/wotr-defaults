@@ -1,35 +1,35 @@
 #!/usr/bin/env bash
-# cwt-defaults — apply cwt's built-in default worktree setup.
+# wotr-defaults — apply wotr's built-in default worktree setup.
 #
-# Call this from ~/.cwt/setup or .cwt/setup to opt into the defaults
+# Call this from ~/.wotr/setup or .wotr/setup to opt into the defaults
 # while still running your own custom steps:
 #
 #   #!/bin/bash
-#   cwt-defaults        # apply defaults
+#   wotr-defaults        # apply defaults
 #   pnpm install        # then your custom steps
 #
-# Requires CWT_ROOT to be set (done automatically by cwt).
+# Requires WOTR_ROOT to be set (done automatically by wotr).
 
 set -e
 
-if [ -z "$CWT_ROOT" ]; then
-  echo "cwt-defaults: CWT_ROOT is not set. Run this from within a cwt setup hook." >&2
+if [ -z "$WOTR_ROOT" ]; then
+  echo "wotr-defaults: WOTR_ROOT is not set. Run this from within a wotr setup hook." >&2
   exit 1
 fi
 
 # Plain symlinks: safe to share across worktrees
 for file in .env node_modules; do
-  if [ -e "$CWT_ROOT/$file" ] && [ ! -e "$file" ]; then
-    ln -sf "$CWT_ROOT/$file" "$file"
+  if [ -e "$WOTR_ROOT/$file" ] && [ ! -e "$file" ]; then
+    ln -sf "$WOTR_ROOT/$file" "$file"
     echo "  Symlinked $file"
   fi
 done
 
 # .claude: create a real directory, symlink all contents from root,
 # but copy settings.local.json so runtime permission approvals stay isolated.
-if [ -d "$CWT_ROOT/.claude" ] && [ ! -e ".claude" ]; then
+if [ -d "$WOTR_ROOT/.claude" ] && [ ! -e ".claude" ]; then
   mkdir .claude
-  for item in "$CWT_ROOT/.claude/"* "$CWT_ROOT/.claude/".?*; do
+  for item in "$WOTR_ROOT/.claude/"* "$WOTR_ROOT/.claude/".?*; do
     [ -e "$item" ] || continue
     name=$(basename "$item")
     [ "$name" = "." ] || [ "$name" = ".." ] || [ "$name" = "settings.local.json" ] && continue
@@ -37,8 +37,8 @@ if [ -d "$CWT_ROOT/.claude" ] && [ ! -e ".claude" ]; then
   done
   echo "  Created .claude/ (symlinked contents)"
 
-  if [ -f "$CWT_ROOT/.claude/settings.local.json" ]; then
-    cp "$CWT_ROOT/.claude/settings.local.json" ".claude/settings.local.json"
+  if [ -f "$WOTR_ROOT/.claude/settings.local.json" ]; then
+    cp "$WOTR_ROOT/.claude/settings.local.json" ".claude/settings.local.json"
     echo "  Copied .claude/settings.local.json (isolated)"
   fi
 fi

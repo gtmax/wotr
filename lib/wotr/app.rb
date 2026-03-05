@@ -9,7 +9,7 @@ require_relative "view"
 require_relative "update"
 require_relative "git"
 
-module Cwt
+module Wotr
   class App
     POOL_SIZE = 4
 
@@ -117,6 +117,11 @@ module Cwt
       when :create_worktree, :refresh_list
         result = Update.handle(model, cmd)
         handle_command(result, model, tui, main_queue)
+      when :cd_worktree
+        model.resume_to = cmd[:worktree]
+        model.quit
+      when :switch_worktree
+        suspend_tui_and_switch(cmd[:worktree], model, tui)
       when :resume_worktree, :suspend_and_resume
         suspend_tui_and_run(cmd[:worktree], model, tui)
         Update.refresh_list(model)
@@ -157,6 +162,45 @@ module Cwt
           generation: current_gen
         }
       end
+    end
+
+    def self.suspend_tui_and_switch(worktree, model, tui)
+      RatatuiRuby.restore_terminal
+
+      puts "\e[H\e[2J" # Clear screen
+
+      # Run setup if this is a new worktree
+      if worktree.needs_setup?
+        begin
+          worktree.run_setup!(visible: true)
+          worktree.mark_setup_complete!
+        rescue Interrupt
+          puts "\nSetup aborted."
+          RatatuiRuby.init_terminal
+          return
+        end
+      end
+
+      # Run switch hook (stop-all + start servers)
+      result = worktree.run_switch!
+
+      unless result[:ran]
+        puts "No .wotr/switch hook found."
+        print "Press Enter to return..."
+        begin
+          STDIN.gets
+        rescue Interrupt
+          nil
+        end
+        RatatuiRuby.init_terminal
+        return
+      end
+
+      # After switch, cd into the worktree and quit TUI
+      model.resume_to = worktree
+      model.quit
+
+      RatatuiRuby.init_terminal
     end
 
     def self.suspend_tui_and_run(worktree, model, tui)

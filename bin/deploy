@@ -26,8 +26,8 @@ fi
 bundle exec rake release
 
 # Get the version that was just released
-VERSION=$(ruby -r./lib/claude/worktree/version -e 'puts Claude::Worktree::VERSION')
-GEM_URL="https://rubygems.org/downloads/claude-worktree-${VERSION}.gem"
+VERSION=$(ruby -r./lib/wotr/version -e 'puts Wotr::VERSION')
+GEM_URL="https://rubygems.org/downloads/wotr-${VERSION}.gem"
 
 echo ""
 echo "✅ Gem released successfully!"

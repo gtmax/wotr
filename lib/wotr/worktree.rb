@@ -3,9 +3,9 @@
 require 'git'
 require 'fileutils'
 
-module Cwt
+module Wotr
   class Worktree
-    SETUP_MARKER = ".cwt_needs_setup"
+    SETUP_MARKER = ".wotr_needs_setup"
     DEFAULT_SYMLINKS = [".env", "node_modules"].freeze
 
     attr_reader :repository, :path, :branch, :sha
@@ -43,17 +43,17 @@ module Cwt
 
     # Run setup scripts or default symlinks.
     # Execution order:
-    #   1. ~/.cwt/setup  (user-level, if exists)
-    #   2. .cwt/setup    (repo-level, if exists)
+    #   1. ~/.wotr/setup  (user-level, if exists)
+    #   2. .wotr/setup    (repo-level, if exists)
     #   3. defaults      (only if neither script exists)
-    # Scripts can call `cwt-defaults` to opt into default behaviour explicitly.
+    # Scripts can call `wotr-defaults` to opt into default behaviour explicitly.
     def run_setup!(visible: true)
       has_user = @repository.has_user_setup_script?
       has_repo = @repository.has_setup_script?
 
       if has_user || has_repo
-        run_hook(@repository.user_setup_script_path, label: "~/.cwt/setup", visible: visible) if has_user
-        run_hook(@repository.setup_script_path, label: ".cwt/setup", visible: visible) if has_repo
+        run_hook(@repository.user_setup_script_path, label: "~/.wotr/setup", visible: visible) if has_user
+        run_hook(@repository.setup_script_path, label: ".wotr/setup", visible: visible) if has_repo
       else
         setup_default_symlinks
       end
@@ -65,7 +65,7 @@ module Cwt
       return { ran: false } unless @repository.has_switch_script?
 
       success = system(
-        { "CWT_ROOT" => File.realpath(@repository.root), "CWT_WORKTREE" => @path },
+        { "WOTR_ROOT" => File.realpath(@repository.root), "WOTR_WORKTREE" => @path },
         @repository.switch_script_path,
         chdir: @path
       )
@@ -78,7 +78,7 @@ module Cwt
     def run_teardown!
       return { ran: false } unless @repository.has_teardown_script?
 
-      success = run_hook(@repository.teardown_script_path, label: ".cwt/teardown")
+      success = run_hook(@repository.teardown_script_path, label: ".wotr/teardown")
       { ran: true, success: success }
     end
 
@@ -152,7 +152,7 @@ module Cwt
       end
 
       success = system(
-        { "CWT_ROOT" => File.realpath(@repository.root) },
+        { "WOTR_ROOT" => File.realpath(@repository.root) },
         script_path,
         chdir: @path
       )

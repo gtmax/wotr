@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Cwt
+module Wotr
   class Model
     attr_reader :repository, :selection_index, :mode, :input_buffer, :message, :running, :fetch_generation, :filter_query
     attr_accessor :resume_to  # Worktree object or nil

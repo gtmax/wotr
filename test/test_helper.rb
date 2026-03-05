@@ -1,13 +1,13 @@
 # frozen_string_literal: true
 
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
-require "claude/worktree"
+require "wotr"
 
 require "minitest/autorun"
 
 module GitRepoTestHelper
   def create_test_repo
-    @tmpdir = Dir.mktmpdir("cwt-test-")
+    @tmpdir = Dir.mktmpdir("wotr-test-")
     system("git", "init", "-q", @tmpdir)
     system("git", "-C", @tmpdir, "config", "user.email", "test@test.com")
     system("git", "-C", @tmpdir, "config", "user.name", "Test User")

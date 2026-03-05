@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-require_relative '../claude/worktree/version'
+require_relative 'version'
 
-module Cwt
+module Wotr
   class View
     THEME = {
       header: { fg: :blue, modifiers: [:bold] },
@@ -61,7 +61,7 @@ module Cwt
 
     def self.draw_header(tui, frame, area)
       title = tui.paragraph(
-        text: " CWT v#{Claude::Worktree::VERSION} • WORKTREE MANAGER ",
+        text: " WOTR v#{Wotr::VERSION} • WORKTREE MANAGER ",
         alignment: :center,
         style: tui.style(**THEME[:header]),
         block: tui.block(
@@ -141,14 +141,16 @@ module Cwt
         add_key.call('Esc', 'Cancel')
       when :filtering
         add_key.call('Type', 'Search')
-        add_key.call('Enter', 'Select')
+        add_key.call('Enter', 'CD')
         add_key.call('Esc', 'Reset')
       else
         add_key.call('n', 'New')
         add_key.call('/', 'Filter')
-        add_key.call('Enter', 'Resume')
+        add_key.call('Enter', 'CD')
+        add_key.call('s', 'Switch')
+        add_key.call('r', 'Resume')
         add_key.call('d', 'Delete')
-        add_key.call('q', 'Quit')
+        add_key.call('Esc', 'Quit')
       end
 
       msg_style = if model.message.downcase.include?('error') || model.message.downcase.include?('warning')

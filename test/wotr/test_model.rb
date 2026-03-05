@@ -1,13 +1,13 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require "cwt/model"
-require "cwt/update"
-require "cwt/repository"
-require "cwt/worktree"
+require "wotr/model"
+require "wotr/update"
+require "wotr/repository"
+require "wotr/worktree"
 require "mocha/minitest"
 
-module Cwt
+module Wotr
   class TestModel < Minitest::Test
     def setup
       @mock_repo = mock('repository')

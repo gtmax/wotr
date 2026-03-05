@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require "cwt/git"
+require "wotr/git"
 require "mocha/minitest"
 
-module Cwt
+module Wotr
   class TestGit < Minitest::Test
     def test_get_commit_ages_empty_shas
       mock_git = mock('git')

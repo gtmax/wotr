@@ -1,12 +1,12 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require "cwt/repository"
-require "cwt/worktree"
+require "wotr/repository"
+require "wotr/worktree"
 require "tmpdir"
 require "fileutils"
 
-module Cwt
+module Wotr
   class TestWorktree < Minitest::Test
     include GitRepoTestHelper
 
@@ -111,7 +111,7 @@ module Cwt
 
       # Create teardown script
       FileUtils.mkdir_p(@repo.config_dir)
-      File.write(@repo.teardown_script_path, "#!/bin/bash\necho 'teardown' > \"$CWT_ROOT/teardown.txt\"")
+      File.write(@repo.teardown_script_path, "#!/bin/bash\necho 'teardown' > \"$WOTR_ROOT/teardown.txt\"")
       FileUtils.chmod(0o755, @repo.teardown_script_path)
 
       capture_io { wt.run_teardown! }
@@ -146,7 +146,7 @@ module Cwt
 
       # Create teardown script
       FileUtils.mkdir_p(@repo.config_dir)
-      File.write(@repo.teardown_script_path, "#!/bin/bash\necho 'ran' > \"$CWT_ROOT/deleted.txt\"")
+      File.write(@repo.teardown_script_path, "#!/bin/bash\necho 'ran' > \"$WOTR_ROOT/deleted.txt\"")
       FileUtils.chmod(0o755, @repo.teardown_script_path)
 
       capture_io { wt.delete!(force: true) }
@@ -232,17 +232,17 @@ module Cwt
       refute Dir.exist?(parent_dir), "Parent dir should be removed when empty"
     end
 
-    def test_cwt_root_env_var_is_set_for_setup
+    def test_wotr_root_env_var_is_set_for_setup
       result = @repo.create_worktree("env-test")
       wt = result[:worktree]
 
       FileUtils.mkdir_p(@repo.config_dir)
-      File.write(@repo.setup_script_path, "#!/bin/bash\necho \"$CWT_ROOT\" > cwt_root.txt")
+      File.write(@repo.setup_script_path, "#!/bin/bash\necho \"$WOTR_ROOT\" > wotr_root.txt")
       FileUtils.chmod(0o755, @repo.setup_script_path)
 
       capture_io { wt.run_setup!(visible: true) }
 
-      root_file = File.join(wt.path, "cwt_root.txt")
+      root_file = File.join(wt.path, "wotr_root.txt")
       assert File.exist?(root_file)
       assert_equal File.realpath(@tmpdir), File.read(root_file).strip
     end

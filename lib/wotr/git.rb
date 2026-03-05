@@ -2,7 +2,7 @@
 
 require 'git'
 
-module Cwt
+module Wotr
   # Thin wrapper around git commands.
   # Business logic lives in Repository and Worktree classes.
   class Git

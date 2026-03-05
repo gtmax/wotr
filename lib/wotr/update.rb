@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Cwt
+module Wotr
   class Update
     def self.handle(model, message)
       case message[:type]
@@ -76,12 +76,12 @@ module Cwt
         end
       elsif model.mode == :filtering
         if event.enter?
-          # Select current item and resume
+          # Select current item and cd into it
           wt = model.selected_worktree
           if wt
             model.set_filter(String.new) # Clear filter
             model.set_mode(:normal) # Exit filter mode on selection
-            return { type: :resume_worktree, worktree: wt }
+            return { type: :cd_worktree, worktree: wt }
           else
             model.set_mode(:normal)
           end
@@ -99,7 +99,7 @@ module Cwt
         end
       else
         # Normal Mode
-        if event.q? || event.ctrl_c?
+        if event.q? || event.ctrl_c? || event.esc?
           return { type: :quit }
         elsif event.j? || event.down?
           model.move_selection(1)
@@ -118,10 +118,19 @@ module Cwt
         elsif event.enter?
           wt = model.selected_worktree
           if wt
-            model.set_filter(String.new) # Clear filter on resume
-            return { type: :resume_worktree, worktree: wt }
+            return { type: :cd_worktree, worktree: wt }
           end
         elsif event.r?
+          wt = model.selected_worktree
+          if wt
+            return { type: :resume_worktree, worktree: wt }
+          end
+        elsif event.s?
+          wt = model.selected_worktree
+          if wt
+            return { type: :switch_worktree, worktree: wt }
+          end
+        elsif event.R? # Shift+r
           return { type: :refresh_list }
         end
       end
