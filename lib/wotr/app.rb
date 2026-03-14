@@ -16,6 +16,7 @@ module Wotr
 
     def self.run
       # Discover repository from current directory (works from worktrees too)
+      launch_dir = Dir.pwd
       repository = Repository.discover
       unless repository
         puts "Error: Not in a git repository"
@@ -52,6 +53,7 @@ module Wotr
 
       # Initial Load
       Update.refresh_list(model)
+      model.select_worktree_by_path(launch_dir)
 
       # Main Event Queue
       main_queue = Queue.new

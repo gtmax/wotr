@@ -164,7 +164,7 @@ module Wotr
                                         ))
                         ])
                       else
-                        tui.text_line(spans: [tui.text_span(content: ' WORKTREES ', style: tui.style(**THEME[:dim]))])
+                        tui.text_line(spans: [tui.text_span(content: " Worktrees (#{model.worktrees.size}) ", style: tui.style(**THEME[:dim]))])
                       end
 
       header_cells = [

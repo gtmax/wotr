@@ -69,7 +69,7 @@ module Wotr
 
       output = @git.lib.send(:command, 'worktree', 'list', '--porcelain')
 
-      parse_porcelain(output).map do |data|
+      wts = parse_porcelain(output).map do |data|
         Worktree.new(
           repository: self,
           path: data[:path],
@@ -77,6 +77,24 @@ module Wotr
           sha: data[:sha]
         )
       end
+
+      # Sort by last commit time, most recent first
+      shas = wts.map(&:sha).compact
+      unless shas.empty?
+        timestamps = {}
+        begin
+          output = @git.lib.send(:command, 'show', '--no-patch', '--format=%H %ct', *shas)
+          output.each_line do |line|
+            sha, ts = line.strip.split(' ', 2)
+            timestamps[sha] = ts.to_i if sha && ts
+          end
+        rescue ::Git::Error
+          # Fall back to unsorted
+        end
+        wts.sort_by! { |wt| -(timestamps[wt.sha] || 0) }
+      end
+
+      wts
     rescue ::Git::Error
       []
     end

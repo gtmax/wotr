@@ -117,6 +117,17 @@ module Wotr
       @fetch_generation += 1
     end
 
+    def select_worktree_by_path(path)
+      normalized = begin
+        File.realpath(path)
+      rescue Errno::ENOENT
+        File.expand_path(path)
+      end
+      list = visible_worktrees
+      idx = list.index { |wt| wt.path == normalized }
+      @selection_index = idx if idx
+    end
+
     def move_selection(delta)
       list = visible_worktrees
       return if list.empty?
