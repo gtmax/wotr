@@ -10,6 +10,18 @@ There are a million tools for AI coding right now. Some wrap agents in Docker co
 
 The goal of this tool is to be as unimposing as possible. We don't want to change how you work, we just want to make the "setup" part faster.
 
+## Installation
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gtmax/wotr/main/install.sh | bash
+```
+
+Update to latest:
+
+```bash
+wotr update
+```
+
 ## How it works
 
 The core of wotr is a minimal worktree manager — a TUI that creates, lists, and deletes git worktrees. On its own it does very little. The real power comes from the scripts you wire into it via `.wotr/config`: lifecycle hooks that run when worktrees are created or switched to, actions that bind keys to arbitrary commands, and resources that manage shared services across worktrees. wotr is the engine; your config is the logic.
@@ -26,18 +38,6 @@ The core of wotr is a minimal worktree manager — a TUI that creates, lists, an
 *   **Auto-Setup:** Symlinks your `.env` and `node_modules` out of the box via `wotr-default-setup`. Customize with `.wotr/config`.
 *   **Custom Actions:** Define keybindings that launch editors, run tests, or any command against a worktree.
 *   **Shared Resources:** Local dev is resource-constrained — you can't run a separate web server, database, and Docker stack for every worktree. wotr lets you define exclusive resources and switch them between worktrees with a single keypress, so the right branch always owns the right services.
-
-## Installation
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/gtmax/wotr/main/install.sh | bash
-```
-
-Update to latest:
-
-```bash
-wotr update
-```
 
 ## Configuration
 
