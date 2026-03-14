@@ -105,7 +105,14 @@ module Wotr
             end
           end
 
-          # Poll resources on a timer
+          # Refresh worktree list on a fast timer
+          if model.worktree_poll_due?
+            model.mark_worktree_poll_started
+            Update.refresh_list(model)
+            start_background_fetch(model, main_queue)
+          end
+
+          # Poll resources on a slower timer
           if model.has_resources? && model.resource_poll_due?
             start_resource_poll(model, main_queue)
           end

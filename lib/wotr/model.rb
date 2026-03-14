@@ -3,6 +3,7 @@
 module Wotr
   class Model
     RESOURCE_POLL_INTERVAL = 60 # seconds
+    WORKTREE_POLL_INTERVAL = 15 # seconds
 
     SHORTCUTS = {
       normal: [
@@ -53,6 +54,7 @@ module Wotr
       @mouse_areas = {}
       @resource_icons = {}     # { "/path/to/worktree" => ["🌐", "🤖"] }
       @last_resource_poll = nil
+      @last_worktree_poll = nil
       @background_activity = 0
       @task_log = []
       @task_label = nil
@@ -229,6 +231,15 @@ module Wotr
 
     def background_activity?
       @background_activity > 0
+    end
+
+    def worktree_poll_due?
+      @last_worktree_poll.nil? ||
+        (Time.now - @last_worktree_poll) >= WORKTREE_POLL_INTERVAL
+    end
+
+    def mark_worktree_poll_started
+      @last_worktree_poll = Time.now
     end
 
     def resource_poll_due?
