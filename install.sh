@@ -1,4 +1,13 @@
 #!/usr/bin/env bash
+# Self-bootstrapping installer: when piped from curl, re-executes from a
+# tempfile so that no subprocess can consume the remaining script lines.
+if [ -z "$_WOTR_INSTALL_REEXEC" ]; then
+  _WOTR_INSTALL_TMP=$(mktemp)
+  cat > "$_WOTR_INSTALL_TMP"
+  _WOTR_INSTALL_REEXEC=1 exec bash "$_WOTR_INSTALL_TMP"
+fi
+rm -f "$_WOTR_INSTALL_TMP" 2>/dev/null
+
 set -e
 
 REPO="gtmax/wotr"
@@ -40,7 +49,7 @@ ensure_ruby() {
   printf "Install Ruby via Homebrew? [Y/n] "
   read -r REPLY </dev/tty 2>/dev/null || REPLY=""
   if [[ ! "$REPLY" =~ ^[Nn]$ ]]; then
-    brew install ruby < /dev/null
+    brew install ruby
     RUBY="$BREW_RUBY"
     GEM="$BREW_GEM"
   else
