@@ -172,7 +172,7 @@ GEM_BIN=$("$GEM" environment | awk '/EXECUTABLE DIRECTORY/ {print $NF}')
 symlink_bin "wotr" "$GEM_BIN"
 # Helper scripts are bash/ruby — copy directly so the shell runs them, not RubyGems
 GEM_DIR=$("$GEM" environment gemdir)
-for script in wotr-default-setup wotr-output; do
+for script in wotr-default-setup wotr-output wotr-rename-tab; do
   SRC=$(ls "$GEM_DIR/gems/wotr-"*/exe/$script 2>/dev/null | tail -1)
   if [ -n "$SRC" ] && [ -d "$BREW_PREFIX/bin" ]; then
     cp "$SRC" "$BREW_PREFIX/bin/$script"

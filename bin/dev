@@ -56,7 +56,7 @@ case "$COMMAND" in
     "$RUBY" -S gem build wotr.gemspec
     # Remove stale gem bin wrappers that conflict with re-install
     GEM_BIN_PRE=$("$GEM" environment | awk '/EXECUTABLE DIRECTORY/ {print $NF}')
-    for wrapper in wotr-output wotr-default-setup; do
+    for wrapper in wotr-output wotr-default-setup wotr-rename-tab; do
       rm -f "$GEM_BIN_PRE/$wrapper" 2>/dev/null
     done
     echo "Installing gem..."
@@ -71,7 +71,7 @@ case "$COMMAND" in
     # Symlink Ruby-based executables and copy shell scripts into /opt/homebrew/bin
     GEM_DIR=$("$GEM" environment gemdir)
     GEM_BIN_INSTALLED=$("$GEM" environment | awk '/EXECUTABLE DIRECTORY/ {print $NF}')
-    for script in wotr-default-setup wotr-output; do
+    for script in wotr-default-setup wotr-output wotr-rename-tab; do
       SRC=$(ls "$GEM_DIR/gems/wotr-"*/exe/$script 2>/dev/null | tail -1)
       if [ -n "$SRC" ] && [ -d "/opt/homebrew/bin" ]; then
         cp "$SRC" "/opt/homebrew/bin/$script"

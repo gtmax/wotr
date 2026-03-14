@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# wotr-rename-tab — rename the terminal tab/workspace to match the current worktree.
+#
+# Supports:
+#   - cmux (cmux.dev) — renames the workspace via the cmux CLI
+#
+# Usage: wotr-rename-tab [name]
+#   If no name is given, uses the current git branch name.
+#
+# Requires WOTR_WORKTREE to be set (done automatically by wotr hooks).
+
+set -e
+
+NAME="${1:-}"
+
+if [ -z "$NAME" ]; then
+  if [ -n "$WOTR_WORKTREE" ]; then
+    NAME=$(git -C "$WOTR_WORKTREE" rev-parse --abbrev-ref HEAD 2>/dev/null || basename "$WOTR_WORKTREE")
+  else
+    NAME=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+  fi
+fi
+
+# ── cmux ──────────────────────────────────────────────────────────────────────
+if [ -n "$CMUX_WORKSPACE_ID" ]; then
+  CMUX_CLI="/Applications/cmux.app/Contents/Resources/bin/cmux"
+  if [ -x "$CMUX_CLI" ]; then
+    "$CMUX_CLI" rename-workspace "$NAME" 2>/dev/null || true
+    exit 0
+  fi
+fi
+
+# ── Not in a supported terminal — silently do nothing ─────────────────────────
+exit 0
