@@ -58,7 +58,18 @@ hooks:
   switch: |
     bin/dev stop-all
     bin/dev start
+```
 
+### Actions
+
+Actions bind keys to commands you run against the selected worktree. Two modes:
+
+*   **`switch_to`** — suspends the TUI and hands the terminal to the command (e.g. an editor). When the command exits, the TUI resumes.
+*   **`run`** — runs in the background while the TUI stays open, with output shown in a log pane.
+
+If both are present, `run` executes first as preparation, then `switch_to` takes over.
+
+```yaml
 actions:
   editor:
     key: e
@@ -66,7 +77,23 @@ actions:
   test:
     key: t
     run: pnpm test
+```
 
+### Resources
+
+A dev machine has limited capacity — you typically can't run a separate web server, database, and Docker stack for every worktree simultaneously. Resources let you declare these shared services and manage which worktree owns them.
+
+Each resource has two scripts:
+
+*   **`inquire`** — checks the current state of the resource. Runs periodically in the background. The script uses `wotr-output` to report status: `status=unowned` (nobody owns it), `status=owned owner=<path>` (owned by a specific worktree), or `status=compatible` (non-exclusive, available to this worktree).
+*   **`acquire`** — takes ownership of the resource for the selected worktree. Typically stops the service elsewhere and starts it here.
+
+Resources can be **exclusive** or **non-exclusive**:
+
+*   **Exclusive** (e.g. a web server bound to a port) — only one worktree can own it at a time. The inquire script reports `status=owned owner=<path>` to indicate which worktree has it, and the TUI shows the resource icon next to that worktree.
+*   **Non-exclusive** (e.g. a database schema) — multiple worktrees can be compatible with the current state. The inquire script reports `status=compatible` for each worktree whose code matches the current DB schema, and the TUI shows the icon next to all compatible worktrees. This is useful for resources like database migrations where you need to know which branches are safe to work on without running a migration first.
+
+```yaml
 resources:
   web-server:
     icon: 💻
@@ -81,6 +108,14 @@ resources:
         exit 0
       fi
       wotr-output status=owned owner="$(lsof -p "$pid" -a -d cwd -Fn 2>/dev/null | grep '^n' | sed 's/^n//')"
+  db-schema:
+    icon: 💾
+    exclusive: false
+    description: Database schema compatibility
+    acquire: |
+      bin/dev db:migrate
+    inquire: |
+      bin/dev db:check-schema && wotr-output status=compatible || wotr-output status=incompatible
 ```
 
 Personal overrides go in `.wotr/config.local` (add to `.gitignore`).
