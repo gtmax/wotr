@@ -6,6 +6,21 @@ if RUBY_VERSION < "3.2.0"
   exit 1
 end
 
+# Handle --repo-path before dispatching
+if (idx = ARGV.index("--repo-path"))
+  path = ARGV[idx + 1]
+  unless path
+    warn "wotr: --repo-path requires a path argument"
+    exit 1
+  end
+  unless Dir.exist?(path)
+    warn "wotr: #{path} does not exist"
+    exit 1
+  end
+  Dir.chdir(path)
+  ARGV.slice!(idx, 2)
+end
+
 if ARGV.empty?
   require_relative '../lib/wotr/app'
   Wotr::App.run

@@ -69,6 +69,7 @@ module Wotr
 
       Usage:
         wotr                          Launch TUI
+        wotr --repo-path <path> ...   Run any command against a different repo
         wotr acquire <resource>       Run resource acquire script
         wotr inquire [resource]       Run resource inquire script(s), print JSON
         wotr resources                List configured resources
