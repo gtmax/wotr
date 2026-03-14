@@ -117,13 +117,14 @@ module Wotr
         @git.lib.send(:worktree_command,
           'worktree', 'add', '--track', '-b', safe_name, path, "origin/#{safe_name}")
       else
-        # Fast-forward the default branch to latest origin before branching
-        fast_forward_default_branch!
-
-        args = ['worktree', 'add', '-b', safe_name, path]
-        base_branch = ENV["WOTR_START_POINT"]
-        args << base_branch if base_branch && !base_branch.strip.empty?
-        @git.lib.send(:worktree_command, *args)
+        # Branch from latest origin/default-branch (avoids touching local main)
+        base = ENV["WOTR_START_POINT"]
+        if base.nil? || base.strip.empty?
+          @git.lib.send(:command, 'fetch', '--quiet', 'origin', default_branch)
+          base = "origin/#{default_branch}"
+        end
+        @git.lib.send(:worktree_command,
+          'worktree', 'add', '-b', safe_name, path, base)
       end
 
       # Create worktree object
@@ -170,13 +171,6 @@ module Wotr
       end
     end
 
-    def fast_forward_default_branch!
-      branch = default_branch
-      @git.lib.send(:command, 'fetch', '--quiet', 'origin', branch)
-      @git.lib.send(:command, 'merge', '--ff-only', "origin/#{branch}")
-    rescue ::Git::Error
-      # Non-fatal — proceed with current HEAD if ff fails
-    end
 
     def parse_porcelain(output)
       worktrees = []
