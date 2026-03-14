@@ -40,7 +40,7 @@ ensure_ruby() {
   printf "Install Ruby via Homebrew? [Y/n] "
   read -r REPLY </dev/tty 2>/dev/null || REPLY=""
   if [[ ! "$REPLY" =~ ^[Nn]$ ]]; then
-    brew install ruby
+    brew install ruby < /dev/null
     RUBY="$BREW_RUBY"
     GEM="$BREW_GEM"
   else
