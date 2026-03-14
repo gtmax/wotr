@@ -91,10 +91,10 @@ TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 echo "Downloading latest gem from github.com/$REPO..."
-LATEST_URL=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
+LATEST_URL=$(curl -sSL "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null \
   | grep '"browser_download_url"' \
   | grep '\.gem"' \
-  | sed 's/.*"browser_download_url": "\(.*\)"/\1/')
+  | sed 's/.*"browser_download_url": "\(.*\)"/\1/' || true)
 
 if [ -z "$LATEST_URL" ]; then
   # No release yet — build from source
