@@ -47,7 +47,43 @@ agents:
   exclusive: true
   description: AI agent containers
   acquire: |
-    docker compose up -d service-name
+    # Stop containers from other worktrees first
+    for name in service-a service-b; do
+      old=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E "\-${name}-[0-9]+$" | head -1)
+      if [ -n "$old" ]; then
+        old_project=$(echo "$old" | sed "s/-${name}-[0-9]*$//")
+        current_project=$(basename "$PWD")
+        if [ "$old_project" != "$current_project" ]; then
+          echo "Stopping ${name} from project ${old_project}..."
+          docker compose -p "$old_project" stop "$name" 2>/dev/null
+        fi
+      fi
+    done
+    docker compose up -d service-a service-b
+
+    # Wait for containers to become healthy (timeout 60s)
+    echo "Waiting for containers to become healthy..."
+    for name in service-a service-b; do
+      elapsed=0
+      while [ $elapsed -lt 60 ]; do
+        health=$(docker inspect --format '{{.State.Health.Status}}' \
+          "$(docker compose ps -q "$name" 2>/dev/null)" 2>/dev/null)
+        if [ "$health" = "healthy" ]; then
+          echo "  $name: healthy"
+          break
+        elif [ "$health" = "" ]; then
+          echo "  $name: container not found"
+          exit 1
+        fi
+        sleep 2
+        elapsed=$((elapsed + 2))
+      done
+      if [ "$health" != "healthy" ]; then
+        echo "  $name: failed to become healthy within 60s (status: $health)"
+        docker compose logs --tail=10 "$name" 2>/dev/null
+        exit 1
+      fi
+    done
   inquire: |
     container=$(docker ps --filter health=healthy --format '{{.Names}}' 2>/dev/null \
       | grep -E "\-service-name-[0-9]+$" \
@@ -65,7 +101,12 @@ agents:
     fi
 ```
 
-**Key**: Use `--filter health=healthy` not `--filter status=running` to exclude crash-looping containers. Docker Compose project name defaults to the directory name, which maps to the worktree.
+**Key points**:
+- Use `--filter health=healthy` not `--filter status=running` to exclude crash-looping containers
+- Docker Compose project name defaults to the directory name, which maps to the worktree
+- Stop containers from other worktrees before starting — avoids port conflicts
+- Wait for health checks with timeout — acquire fails visibly if containers crash-loop
+- On failure, dump last 10 log lines so the error is visible in wotr's log pane
 
 ---
 
@@ -201,60 +242,69 @@ env-sync:
 
 ```yaml
 hooks:
-  new: |
-    wotr-default-setup
-    pnpm install --frozen-lockfile
-  switch: |
-    # Restart dev server pointing at this worktree
-    pnpm dev
+  new:
+    - bg: |
+        wotr-default-setup
+        pnpm install --frozen-lockfile
+  switch:
+    - bg: wotr-rename-tab
+      stop_on_failure: false
+    - fg: wotr-launch-claude
 ```
 
 ### Python / Poetry
 
 ```yaml
 hooks:
-  new: |
-    wotr-default-setup
-    poetry install
-  switch: |
-    poetry run python manage.py runserver
+  new:
+    - bg: |
+        wotr-default-setup
+        poetry install
+  switch:
+    - bg: wotr-rename-tab
+      stop_on_failure: false
+    - fg: wotr-launch-claude
 ```
 
 ### Ruby / Bundler
 
 ```yaml
 hooks:
-  new: |
-    wotr-default-setup
-    bundle install
-  switch: |
-    bundle exec rails server
+  new:
+    - bg: |
+        wotr-default-setup
+        bundle install
+  switch:
+    - bg: wotr-rename-tab
+      stop_on_failure: false
+    - fg: wotr-launch-claude
 ```
 
 ### Symlink Pattern for Shared Files
 
 ```yaml
 hooks:
-  new: |
-    wotr-default-setup
+  new:
+    - bg: |
+        wotr-default-setup
 
-    # Symlink shared env files
-    for file in .env.development.local .env.test.local; do
-      src="$WOTR_ROOT/$file"
-      dst="$file"
-      if [ -f "$src" ] && [ ! -e "$dst" ]; then
-        ln -sf "$src" "$dst"
-        echo "  Symlinked $dst"
-      fi
-    done
+        # Symlink shared env files
+        for file in .env.development.local .env.test.local; do
+          src="$WOTR_ROOT/$file"
+          dst="$file"
+          if [ -f "$src" ] && [ ! -e "$dst" ]; then
+            ln -sf "$src" "$dst"
+            echo "  Symlinked $dst"
+          fi
+        done
 
-    # Copy files that must be real (e.g., Docker-mounted)
-    for file in .docker.env; do
-      src="$WOTR_ROOT/$file"
-      dst="$file"
-      if [ -f "$src" ] && [ ! -e "$dst" ]; then
-        cp "$src" "$dst"
-        echo "  Copied $dst"
-      fi
-    done
+        # Copy files that must be real (e.g., Docker-mounted)
+        for file in .docker.env; do
+          src="$WOTR_ROOT/$file"
+          dst="$file"
+          if [ -f "$src" ] && [ ! -e "$dst" ]; then
+            cp "$src" "$dst"
+            echo "  Copied $dst"
+          fi
+        done
 ```

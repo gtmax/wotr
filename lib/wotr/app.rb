@@ -95,11 +95,25 @@ module Wotr
             when :finish_background_activity
               model.finish_background_activity
             when :task_log_line
-              model.append_task_log(msg[:line])
+              if msg[:status]
+                model.log_status(msg[:line])
+              else
+                model.append_task_log(msg[:line])
+              end
             when :task_complete
               model.finish_background_activity
-              model.clear_task_log
-              model.set_message(msg[:message]) if msg[:message]
+              if msg[:message]
+                failed = msg[:message].downcase.include?("fail")
+                model.finish_task_log(failed ? "failed" : "done")
+                model.log_status(msg[:message], style: failed ? :error : :dim)
+                if failed
+                  # Auto-switch to verbose and pin scroll to error
+                  model.toggle_verbose unless model.verbose
+                  model.pin_scroll_to_error
+                end
+              else
+                model.finish_task_log
+              end
               result = msg[:result]
               handle_command(result, model, tui, main_queue) if result
             else
@@ -114,8 +128,8 @@ module Wotr
             start_background_fetch(model, main_queue)
           end
 
-          # Poll resources on a slower timer
-          if model.has_resources? && model.resource_poll_due?
+          # Poll resources on a slower timer (skip while a task is running)
+          if model.has_resources? && model.resource_poll_due? && !model.task_running?
             start_resource_poll(model, main_queue)
           end
         end
@@ -145,10 +159,20 @@ module Wotr
       when :copy_log
         text = model.log_text
         if text.empty?
-          model.log_message("Nothing to copy.")
+          model.log_status("Nothing to copy.")
         else
           IO.popen('pbcopy', 'w') { |io| io.write(text) }
-          model.log_replace_last("Log copied to clipboard.")
+          model.log_status("Log copied to clipboard.")
+        end
+      when :toggle_verbose
+        model.toggle_verbose
+      when :copy_log_path
+        path = model.repository.config.log_path
+        if path
+          IO.popen('pbcopy', 'w') { |io| io.write(path) }
+          model.log_status("Full log path #{path} copied to clipboard.")
+        else
+          model.log_status("No log path configured.")
         end
       when :delete_worktree
         wt = cmd[:worktree]
@@ -209,11 +233,11 @@ module Wotr
         model.start_background_activity
 
         Thread.new do
-          main_queue << { type: :task_log_line, line: "Creating worktree #{name}..." }
+          main_queue << { type: :task_log_line, line: "Creating worktree #{name}...", status: true }
           result = model.repository.create_worktree(name)
 
           if result[:success]
-            main_queue << { type: :task_log_line, line: "Created. Running setup..." }
+            main_queue << { type: :task_log_line, line: "Created. Running setup...", status: true }
             main_queue << { type: :task_complete,
                             result: { type: :post_create_worktree, worktree: result[:worktree], name: name } }
           else
@@ -230,6 +254,7 @@ module Wotr
         model.select_worktree_by_path(cmd[:worktree].path)
         handle_command({ type: :resume_worktree, worktree: cmd[:worktree] }, model, tui, main_queue)
       when :refresh_list
+        model.start_task_log(nil)  # clear log without setting a label
         result = Update.handle(model, cmd)
         handle_command(result, model, tui, main_queue)
         start_resource_poll(model, main_queue) if model.has_resources?
@@ -243,15 +268,38 @@ module Wotr
         name = cmd[:name]
         wt_label = cmd[:worktree].branch || cmd[:worktree].name
         wt_path = cmd[:worktree].path
-        acquire_msg = "Acquiring #{name} for #{wt_label}..."
-        model.set_message(acquire_msg)
+        model.start_task_log("Acquiring #{name} for #{wt_label}")
+        model.log_status("Acquiring #{name} for #{wt_label}...")
         model.start_background_activity
+
         Thread.new do
-          cfg.run_acquire_background(name, env: env, chdir: wt_path)
-          main_queue << { type: :trigger_resource_poll, message: "#{acquire_msg} done." }
-        rescue StandardError
-          main_queue << { type: :finish_background_activity }
+          script = cfg.resource(name)&.fetch("acquire", nil)
+          success = true
+          if script
+            # Stream acquire output to log pane
+            cfg.send(:write_tmpscript, "#!/usr/bin/env bash\n#{script}") do |path|
+              IO.popen(env.merge("WOTR_LOG" => cfg.log_path || "/dev/null"),
+                       [path], chdir: wt_path, err: [:child, :out]) do |io|
+                io.each_line { |line| main_queue << { type: :task_log_line, line: line.chomp } }
+              end
+            end
+            success = $?.success?
+          end
+          if success
+            main_queue << { type: :task_complete,
+                            result: { type: :refresh_after_acquire },
+                            message: "Acquired #{name}." }
+          else
+            main_queue << { type: :task_complete,
+                            message: "Failed to acquire #{name} (exit #{$?.exitstatus})." }
+          end
+        rescue StandardError => e
+          main_queue << { type: :task_log_line, line: "Error: #{e.message}", status: true }
+          main_queue << { type: :task_complete, message: "Failed to acquire #{name}." }
         end
+      when :refresh_after_acquire
+        # Continuation of acquire — don't clear log
+        start_resource_poll(model, main_queue)
       when :run_action
         run_action(cmd[:name], cmd[:worktree], model, tui, main_queue)
       when :run_fg_steps
@@ -281,7 +329,7 @@ module Wotr
 
       if bg_steps.any?
         model.start_task_log("#{name} (#{wt_label})")
-        model.log_message("Running #{name} action...")
+        model.log_status("Running #{name} action...")
         model.start_background_activity
 
         Thread.new do
@@ -367,13 +415,7 @@ module Wotr
     def self.start_resource_poll(model, main_queue)
       model.mark_resource_poll_started
       model.start_background_activity
-      # Replace-in-place so repeated polls don't accumulate lines
-      last = model.log_entries.last
-      if last && last[:text].start_with?("Refreshing resource status")
-        model.log_replace_last("Refreshing resource status...")
-      else
-        model.log_message("Refreshing resource status...")
-      end
+      model.log_status("Refreshing resource status...")
 
       cfg = model.repository.config
       if cfg.resource_names.empty?
@@ -392,17 +434,25 @@ module Wotr
           cfg.resource_names.each do |name|
             icon = cfg.resource(name)&.fetch("icon", "•") || "•"
 
+            run_inquire = lambda do |wt|
+              env = env_base.merge("WOTR_WORKTREE" => wt.path)
+              main_queue << { type: :task_log_line, line: "inquire #{name} @ #{wt.branch || File.basename(wt.path)}" }
+              result = cfg.run_inquire(name, env: env, chdir: wt.path)
+              # Stream captured output for verbose mode
+              if result[:stdout] && !result[:stdout].strip.empty?
+                result[:stdout].each_line { |l| main_queue << { type: :task_log_line, line: l.chomp } }
+              end
+              result
+            end
+
             if cfg.exclusive?(name)
-              # Run per-worktree from its own dir; stop after finding the owner
               worktrees.each do |wt|
-                env = env_base.merge("WOTR_WORKTREE" => wt.path)
-                result = cfg.run_inquire(name, env: env, chdir: wt.path)
+                result = run_inquire.call(wt)
                 next unless result[:ran] && result[:success]
                 next unless result[:data]["status"] == "owned"
 
                 owner = result[:data]["owner"]
                 if owner
-                  # Script returned explicit owner — map to the correct worktree
                   owner_real = File.realpath(owner) rescue owner
                   target = worktrees.find do |w|
                     wt_real = File.realpath(w.path) rescue w.path
@@ -415,10 +465,8 @@ module Wotr
                 break
               end
             else
-              # Compatible — run per worktree
               worktrees.each do |wt|
-                env = env_base.merge("WOTR_WORKTREE" => wt.path)
-                result = cfg.run_inquire(name, env: env, chdir: wt.path)
+                result = run_inquire.call(wt)
                 next unless result[:ran] && result[:success]
                 icons_by_path[wt.path] << icon if result[:data]["status"] == "compatible"
               end
@@ -521,7 +569,7 @@ module Wotr
 
       if bg_steps.any?
         model.start_task_log("#{label} (#{wt_label})", clear: clear_log)
-        model.log_message("Running #{label} hook...")
+        model.log_status("Running #{label} hook...")
         model.start_background_activity
 
         Thread.new do

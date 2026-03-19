@@ -7,21 +7,26 @@ module Wotr
     INIT_TEMPLATE = <<~YAML
       # .wotr/config — wotr configuration
       # See: https://github.com/gtmax/wotr
+      #
+      # Hooks are arrays of steps. Each step is either:
+      #   - bg: <script>   # runs in TUI log pane (non-interactive)
+      #   - fg: <script>   # suspends TUI, takes the terminal (interactive)
 
       # hooks:
-      #   new: |
-      #     wotr-default-setup
-      #     # pnpm install --frozen-lockfile
-      #   switch: |
-      #     # wotr acquire web-server
+      #   new:
+      #     - bg: wotr-default-setup && pnpm install --frozen-lockfile
+      #   switch:
+      #     - fg: wotr-launch-claude
 
       # actions:
       #   lint:
       #     key: l
-      #     run: pnpm lint
+      #     steps:
+      #       - bg: pnpm lint
       #   test:
       #     key: t
-      #     run: pnpm test
+      #     steps:
+      #       - bg: pnpm test
 
       # resources:
       #   web-server:
@@ -61,7 +66,8 @@ module Wotr
       # actions:
       #   editor:
       #     key: e
-      #     switch_to: nvim .
+      #     steps:
+      #       - fg: nvim .
     YAML
 
     USAGE = <<~USAGE

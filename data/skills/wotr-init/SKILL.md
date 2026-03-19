@@ -64,7 +64,8 @@ Generate a draft `.wotr/config` based on Phase 1 findings. Show the full YAML to
    - `new:` always starts with `wotr-default-setup` (symlinks `.claude/` directory)
    - Add package install command (`pnpm install --frozen-lockfile`, `bundle install`, etc.)
    - Symlink env files that can be shared; copy files Docker needs (Docker requires real files, not symlinks)
-   - `switch:` should stop existing services then start fresh for the switched-to worktree
+   - `switch:` should include `bg: wotr-rename-tab` (with `stop_on_failure: false`) then `fg: wotr-launch-claude`
+   - Use `stop_on_failure: false` on best-effort steps like tab renaming
 
 2. **Resources**
    - Use patterns from `references/resource-patterns.md` as starting points
@@ -82,7 +83,7 @@ Generate a draft `.wotr/config` based on Phase 1 findings. Show the full YAML to
 4. **Resource names**
    - Use lowercase kebab-case
    - Keep names short — they generate keyboard shortcuts
-   - Avoid names starting with reserved letters: `n`, `s`, `d`, `q`, `j`, `k`
+   - Avoid names starting with reserved letters: `n`, `s`, `d`, `q`, `j`, `k`, `l`
 
 ### Phase 3: Refine
 
@@ -134,9 +135,34 @@ Scripts receive:
 
 wotr creates worktrees at `../.worktrees/<repo-name>/<branch-name>` relative to the repo root. Docker Compose project names default to the directory name, which maps to the worktree name.
 
+## Docker Acquire Best Practices
+
+When generating acquire scripts for Docker Compose services, follow these three principles:
+
+### 1. Stop-then-start for exclusive resources
+
+`docker compose up -d` will fail if another worktree's containers hold the same ports. The acquire script must first identify and stop the same service from other worktrees by matching the Docker Compose project name prefix (which defaults to the directory name, mapping to the worktree name).
+
+### 2. Wait for healthy with timeout
+
+`docker compose up -d` returns immediately — the containers might crash-loop or take time to initialize. The acquire script must poll `docker inspect --format '{{.State.Health.Status}}'` with a timeout (typically 60s). Only report success when all containers reach `healthy`. This is critical: without it, wotr will report "acquired" while the service is actually broken.
+
+### 3. Fail loudly on unhealthy
+
+If the health check times out, dump the last N container log lines (`docker compose logs --tail=10 <service>`) and `exit 1`. wotr handles failures by:
+- Auto-switching the log pane to verbose mode
+- Pinning the scroll to the error (new output from resource polling won't push it off-screen)
+- Rendering the error in red
+
+This means the user immediately sees what went wrong without needing to manually check docker logs.
+
+See `references/resource-patterns.md` for the complete Docker Compose pattern implementing all three principles.
+
 ## Edge Cases
 
 - **Shared Supabase DB**: All worktrees share one local Supabase instance. Running `db:migrate` resets the DB, making other worktrees show as incompatible. This is expected — the `db-schema` resource tracks this.
 - **Multiple ports**: If a service binds multiple ports, check the primary one in inquire. Note this in the description.
 - **Background processes**: If `acquire` starts a background process, make sure it doesn't block. Use `&` or a wrapper script that backgrounds and logs.
+- **Docker health checks**: Acquire scripts for Docker services should wait for containers to become healthy with a timeout. Exit non-zero if health check fails — wotr will show the failure in the log pane and auto-switch to verbose mode. See the Docker Compose pattern in `references/resource-patterns.md`.
+- **Stopping other worktrees' containers**: When acquiring an exclusive Docker resource, stop the same containers from other worktrees first by matching the Docker Compose project name prefix.
 - **Monorepo paths**: Commands like `supabase migration list` may need to `cd` into a sub-app directory. Use `$WOTR_WORKTREE/apps/web` not hardcoded paths.

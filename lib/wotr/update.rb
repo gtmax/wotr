@@ -48,7 +48,6 @@ module Wotr
       when :update_resource_icons
         model.update_resource_icons(message[:icons_by_path])
         model.finish_background_activity
-        model.log_replace_last("Refreshing resource status... done.")
         nil
       end
     end
@@ -86,6 +85,15 @@ module Wotr
         elsif event.to_s.length == 1
           model.input_append(event.to_s)
         end
+      elsif model.mode == :log_command
+        # Second key of "l" chord
+        cmd = case event.to_s
+              when 'c' then { type: :copy_log }
+              when 'v' then { type: :toggle_verbose }
+              when 'p' then { type: :copy_log_path }
+              end
+        model.set_mode(:normal)
+        return cmd
       else
         # Normal Mode
         if event.q? || event.ctrl_c? || event.esc?
@@ -111,7 +119,7 @@ module Wotr
           wt = model.selected_worktree
           return { type: :cd_worktree, worktree: wt } if wt
         elsif event.l?
-          return { type: :copy_log }
+          model.set_mode(:log_command)
         elsif event.R? # Shift+r
           return { type: :refresh_list }
         elsif (resource_name = model.resource_shortcuts[event.to_s])
@@ -166,35 +174,35 @@ module Wotr
         return nil
       end
 
-      # Footer shortcut button click
-      if y == areas[:key_y]
-        areas[:key_buttons].each do |btn|
-          next unless x >= btn[:x_start] && x <= btn[:x_end]
-          return trigger_shortcut(model, btn[:key])
+      # Footer button clicks (unified: shortcuts, actions, resources)
+      if areas[:footer_buttons]
+        areas[:footer_buttons].each do |btn|
+          next unless y == btn[:y] && x >= btn[:x_start] && x <= btn[:x_end]
+          cmd = btn[:cmd]
+          case cmd[:type]
+          when :shortcut
+            return trigger_shortcut(model, cmd[:key])
+          when :run_action
+            wt = model.selected_worktree
+            return { type: :run_action, name: cmd[:name], worktree: wt } if wt
+          when :acquire_resource
+            wt = model.selected_worktree
+            return { type: :acquire_resource, name: cmd[:name], worktree: wt } if wt
+          end
         end
       end
 
-      # Action button click
-      if areas[:action_y] && y == areas[:action_y] && model.has_actions?
-        areas[:action_buttons].each do |btn|
+      # Log legend button clicks
+      if areas[:log_bottom_y] && y == areas[:log_bottom_y] && areas[:log_buttons]
+        areas[:log_buttons].each do |btn|
           next unless x >= btn[:x_start] && x <= btn[:x_end]
-          wt = model.selected_worktree
-          return { type: :run_action, name: btn[:action], worktree: wt } if wt
+          return { type: btn[:cmd] }
         end
       end
 
-      # Resource legend button click
-      if areas[:legend_y] && y == areas[:legend_y] && model.has_resources?
-        areas[:legend_buttons].each do |btn|
-          next unless x >= btn[:x_start] && x <= btn[:x_end]
-          wt = model.selected_worktree
-          return { type: :acquire_resource, name: btn[:resource], worktree: wt } if wt
-        end
-      end
-
-      # Copy log button click
-      if areas[:copy_log_y] && y == areas[:copy_log_y] &&
-         x >= areas[:copy_log_x_start] && x <= areas[:copy_log_x_end]
+      # Click inside log pane content → copy log to clipboard
+      if areas[:log_top] && areas[:log_bottom_y] &&
+         y > areas[:log_top] && y < areas[:log_bottom_y]
         return { type: :copy_log }
       end
 

@@ -32,11 +32,12 @@ module Wotr
       SHORTCUTS[:normal].map { |s| s[:key] } + NAV_KEYS
     ).select { |k| k.length == 1 && k =~ /[a-z]/ }.uniq.freeze
 
-    LOG_PANE_MAX_LINES = 200
+    LOG_PANE_MAX_LINES = 400
 
     attr_reader :repository, :selection_index, :mode, :input_buffer,
                 :running, :fetch_generation, :filter_query,
-                :log_entries, :log_scroll_offset, :task_label
+                :log_entries, :log_scroll_offset, :task_label,
+                :verbose
     attr_accessor :resume_to, :mouse_areas
     attr_writer :selection_index
 
@@ -55,28 +56,58 @@ module Wotr
       @last_resource_poll = nil
       @last_worktree_poll = nil
       @background_activity = 0
-      @log_entries = []        # unified log buffer: [{ text:, style: }]
+      @log_entries = []        # unified log buffer: [{ text:, style:, status:, output_count:, last_output: }]
       @log_scroll_offset = 0
+      @log_scroll_pinned = false  # when true, new entries don't auto-scroll
       @task_label = nil
+      @verbose = false
     end
 
     # Unified log: all feedback (status messages, task output) goes here.
+    # status: true marks high-level messages shown in regular mode.
+    # status: false (default) marks script output shown only in verbose mode.
+    # Status entries track output_count and last_output for their following output lines.
 
-    def log_message(text, style: :dim)
-      @log_entries << { text: text, style: style }
+    def log_message(text, style: :dim, status: false)
+      @log_entries << { text: text, style: style, status: status }
       @log_entries.shift if @log_entries.size > LOG_PANE_MAX_LINES
-      @log_scroll_offset = 0  # auto-scroll to bottom on new content
+      if @log_scroll_pinned
+        recalculate_pinned_offset
+      else
+        @log_scroll_offset = 0
+      end
+
+      unless status
+        # Increment count on the most recent status entry
+        last_status = @log_entries.rindex { |e| e[:status] }
+        if last_status
+          @log_entries[last_status][:output_count] = (@log_entries[last_status][:output_count] || 0) + 1
+          @log_entries[last_status][:last_output] = text
+        end
+      end
+    end
+
+    def log_status(text, style: :dim)
+      log_message(text, style: style, status: true)
     end
 
     def log_text
       @log_entries.map { |e| e[:text] }.join("\n")
     end
 
-    def log_replace_last(text, style: :dim)
+    def log_replace_last(text, style: :dim, status: false)
       if @log_entries.empty?
-        log_message(text, style: style)
+        log_message(text, style: style, status: status)
       else
-        @log_entries[-1] = { text: text, style: style }
+        @log_entries[-1] = { text: text, style: style, status: status }
+      end
+    end
+
+    def visible_log_entries
+      if @verbose
+        @log_entries
+      else
+        @log_entries.select { |e| e[:status] }
       end
     end
 
@@ -85,11 +116,13 @@ module Wotr
     end
 
     def set_message(msg)
-      log_message(msg)
+      log_status(msg)
     end
 
     def start_task_log(label, clear: true)
       @task_label = label
+      @task_active = true
+      @log_scroll_pinned = false
       if clear
         @log_entries.clear
         @log_scroll_offset = 0
@@ -100,20 +133,55 @@ module Wotr
       log_message(line)
     end
 
+    def finish_task_log(suffix = "done")
+      @task_label = "#{@task_label} — #{suffix}" if @task_label
+      @task_active = false
+    end
+
     def clear_task_log
       @task_label = nil
+      @task_active = false
     end
 
     def task_running?
-      !@task_label.nil?
+      @task_active == true
+    end
+
+    def pin_scroll_to_error
+      # Pin to the error entry — recalculate offset on each render
+      @log_scroll_pinned = true
+      @pinned_entry_id = @log_entries.rindex { |e| e[:style] == :error }
+      recalculate_pinned_offset
+    end
+
+    def recalculate_pinned_offset
+      return unless @log_scroll_pinned && @pinned_entry_id
+
+      # Find where the pinned entry sits in visible_log_entries
+      visible = visible_log_entries
+      # Map absolute index to visible index
+      visible_idx = 0
+      @log_entries.each_with_index do |entry, i|
+        break if i == @pinned_entry_id
+        visible_idx += 1 if @verbose || entry[:status]
+      end
+      entries_after = [visible.size - 1 - visible_idx, 0].max
+      @log_scroll_offset = entries_after
+    end
+
+    def toggle_verbose
+      @verbose = !@verbose
+      @log_scroll_offset = 0
     end
 
     def log_scroll_up(n = 1)
-      max = [@log_entries.size - 1, 0].max
+      @log_scroll_pinned = false
+      max = [visible_log_entries.size - 1, 0].max
       @log_scroll_offset = [@log_scroll_offset + n, max].min
     end
 
     def log_scroll_down(n = 1)
+      @log_scroll_pinned = false
       @log_scroll_offset = [@log_scroll_offset - n, 0].max
     end
 

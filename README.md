@@ -2,14 +2,6 @@
 
 Built on top of [cwt (claude-worktree)](https://github.com/bucket-robotics/claude-worktree) by [Bucket Robotics](https://github.com/bucket-robotics). cwt introduced the core idea: a TUI for managing git worktrees as isolated AI coding sessions. wotr extends it with a YAML config system, custom actions, shared resources, and a CLI.
 
----
-
-There are a million tools for AI coding right now. Some wrap agents in Docker containers, others proxy every shell command you type, and some try to reinvent your entire IDE.
-
-`wotr` is a simple tool built on a simple premise: **Git worktrees are the best way to isolate AI coding sessions, but they are annoying to manage manually.**
-
-The goal of this tool is to be as unimposing as possible. We don't want to change how you work, we just want to make the "setup" part faster.
-
 ## Installation
 
 ```bash
@@ -22,83 +14,88 @@ Update to latest:
 wotr update
 ```
 
-## How it works
+## How wotr Works
 
-The core of wotr is a minimal worktree manager — a TUI that creates, lists, and deletes git worktrees. On its own it does very little. The real power comes from the scripts you wire into it via `.wotr/config`: lifecycle hooks that run when worktrees are created or switched to, actions that bind keys to arbitrary commands, and resources that manage shared services across worktrees. wotr is the engine; your config is the logic.
+wotr is a TUI + script execution harness for managing git worktrees as isolated AI coding sessions.
+
+### Core Ideas
+
+**Worktrees as sessions.** Each git worktree is a self-contained coding session — its own branch, its own files, its own AI agent conversation. wotr creates, lists, and switches between them.
+
+**Persistent agent sessions.** Terminal-based AI agents (Claude Code, Aider, Codex) store conversations by directory path. Since each worktree has a fixed path, restarting your machine or switching away and back resumes the exact conversation where you left off. No session IDs to remember.
+
+**Resource-constrained local dev.** Ideally each worktree would have its own dev server, its own database, its own containers. In practice, you can't bind port 3333 twice, you share one local Supabase instance, and running four copies of your Docker stack would melt your laptop memory. wotr tracks who owns what and lets you move shared resources between worktrees with a keypress.
+
+**Script-driven customization.** wotr doesn't know your tech stack. All project-specific behavior — installing deps, starting servers, launching your AI agent — lives in `.wotr/config` as shell scripts. wotr just runs them and shows you the output.
+
+wotr's terminal-native design assumes terminal-based AI coding agents. The switch hook suspends the TUI and hands the terminal to whatever CLI tool you configure. IDE-based tools (Cursor, Windsurf) that manage their own editor windows are not a natural fit.
+
+### Design Principles
 
 1.  **It's just Git:** Under the hood, we are just creating standard Git worktrees.
-2.  **Native Environment:** When you enter a session, `wotr` suspends itself and launches a native instance of `claude` (or your preferred shell) directly in that directory.
+2.  **Native Environment:** When you enter a session, `wotr` suspends itself and runs your configured hook — typically launching a CLI agent or shell directly in that directory.
 3.  **Zero Overhead:** We don't wrap the process. We don't intercept your commands. We don't run a background daemon. Your scripts, your aliases, and your workflow remain exactly the same.
 
-## Features
+## .wotr/config
 
-*   **Fast Management:** Create, switch, and delete worktrees instantly.
-*   **Safety Net:** wotr checks for unmerged changes before you delete a session, so you don't accidentally lose work.
-*   **Session Persistence:** Claude conversations are tied to worktree paths, so they survive restarts. Reboot your machine, re-enter a worktree, and your conversation picks up right where you left off.
-*   **Auto-Setup:** Symlinks your `.env` and `node_modules` out of the box via `wotr-default-setup`. Customize with `.wotr/config`.
-*   **Custom Actions:** Define keybindings that launch editors, run tests, or any command against a worktree.
-*   **Shared Resources:** Local dev is resource-constrained — you can't run a separate web server, database, and Docker stack for every worktree. wotr lets you define exclusive resources and switch them between worktrees with a single keypress, so the right branch always owns the right services.
+A YAML file at the repository root. It tells wotr what to do when worktrees are created, entered, and how to manage shared resources. Three sections, all optional.
 
-## Configuration
+All scripts in `.wotr/config` are executed via bash, but can call external programs in any language — `python3 scripts/check_status.py`, `node scripts/setup.js`, a compiled Go binary, whatever. The inline script is just the entry point.
 
-Create `.wotr/config` in your repo root (or run `wotr init`):
+```yaml
+hooks:       # lifecycle scripts (new worktree, switch to worktree)
+actions:     # custom keyboard shortcuts
+resources:   # shared infrastructure tracking
+```
 
 ### Hooks
 
-Two lifecycle hooks run at key moments:
+Hooks are shell scripts that run at key moments in a worktree's lifecycle.
 
-*   **`new`** — runs once when a worktree is first created. Use it to install dependencies, symlink config files, or anything else needed to make the worktree functional. wotr ships a built-in helper, `wotr-default-setup`, which symlinks your `.claude/` directory (so Claude Code settings, skills, and CLAUDE.md carry over) while keeping `settings.local.json` as an isolated copy. Call it from your hook and add project-specific steps after it.
-*   **`switch`** — runs every time you switch context to a worktree. Typically used to stop services owned by the previous worktree and start them for the new one.
+**`new`** runs once when a worktree is first entered (after creation). Use it for setup: install dependencies, copy or symlink env files, prepare the workspace.
+
+**`switch`** runs every time you enter a worktree. Use it to launch your AI agent.
+
+After `new` completes, wotr automatically chains to `switch`.
+
+Each hook is an array of steps:
 
 ```yaml
 hooks:
-  new: |
-    wotr-default-setup
-    pnpm install --frozen-lockfile
-  switch: |
-    bin/dev stop-all
-    bin/dev start
+  new:
+    - bg: |
+        wotr-default-setup
+        pnpm install --frozen-lockfile
+  switch:
+    - bg: wotr-rename-tab
+      stop_on_failure: false
+    - fg: wotr-launch-claude
 ```
 
-### Actions
+- **`bg:`** runs in the TUI log pane (non-interactive, output streams live)
+- **`fg:`** suspends the TUI and takes the terminal (interactive)
+- **`stop_on_failure: false`** — continue even if this step exits non-zero
 
-Actions bind keys to commands you run against the selected worktree. Two modes:
-
-*   **`switch_to`** — suspends the TUI and hands the terminal to the command (e.g. an editor). When the command exits, the TUI resumes.
-*   **`run`** — runs in the background while the TUI stays open, with output shown in a log pane.
-
-If both are present, `run` executes first as preparation, then `switch_to` takes over.
-
-```yaml
-actions:
-  editor:
-    key: e
-    switch_to: nvim .
-  test:
-    key: t
-    run: pnpm test
-```
+Steps run in order. All steps before the first `fg:` run in the log pane. From the first `fg:` onward, the TUI is suspended.
 
 ### Resources
 
-A dev machine has limited capacity — you typically can't run a separate web server, database, and Docker stack for every worktree simultaneously. Resources let you declare these shared services and manage which worktree owns them.
+Resources represent shared local infrastructure that worktrees compete for.
 
 Each resource has two scripts:
+- **`acquire`** — claim the resource for a worktree (start a server, run migrations)
+- **`inquire`** — check who currently owns it or whether a worktree is in sync
 
-*   **`inquire`** — checks the current state of the resource. Runs periodically in the background. The script uses `wotr-output` to report status: `status=unowned` (nobody owns it), `status=owned owner=<path>` (owned by a specific worktree), or `status=compatible` (non-exclusive, available to this worktree).
-*   **`acquire`** — takes ownership of the resource for the selected worktree. Typically stops the service elsewhere and starts it here.
+Resources come in two flavors:
 
-Resources can be **exclusive** or **non-exclusive**:
-
-*   **Exclusive** (e.g. a web server bound to a port) — only one worktree can own it at a time. The inquire script reports `status=owned owner=<path>` to indicate which worktree has it, and the TUI shows the resource icon next to that worktree.
-*   **Non-exclusive** (e.g. a database schema) — multiple worktrees can be compatible with the current state. The inquire script reports `status=compatible` for each worktree whose code matches the current DB schema, and the TUI shows the icon next to all compatible worktrees. This is useful for resources like database migrations where you need to know which branches are safe to work on without running a migration first.
+**Exclusive** — only one worktree at a time. Port bindings, singleton services, Docker containers. Acquiring it stops it elsewhere and starts it here.
 
 ```yaml
 resources:
   web-server:
     icon: 💻
     exclusive: true
-    description: Web dev server (port 3333)
+    description: Dev server (port 3333)
     acquire: |
       bin/dev start
     inquire: |
@@ -107,18 +104,106 @@ resources:
         wotr-output status=unowned
         exit 0
       fi
-      wotr-output status=owned owner="$(lsof -p "$pid" -a -d cwd -Fn 2>/dev/null | grep '^n' | sed 's/^n//')"
+      # Walk up to git root to find owning worktree
+      cwd=$(lsof -p "$pid" -a -d cwd -Fn 2>/dev/null | grep '^n' | sed 's/^n//')
+      root="$cwd"
+      while [ "$root" != "/" ] && [ ! -e "$root/.git" ]; do
+        root=$(dirname "$root")
+      done
+      wotr-output status=owned owner="$root"
+```
+
+**Compatible** — each worktree independently in sync or not. Database migrations, file state. No ownership — just whether this worktree has what it needs.
+
+```yaml
   db-schema:
     icon: 💾
     exclusive: false
-    description: Database schema compatibility
+    description: Database migrations applied
     acquire: |
       bin/dev db:migrate
     inquire: |
-      bin/dev db:check-schema && wotr-output status=compatible || wotr-output status=incompatible
+      # Check for pending migrations
+      ...
+      wotr-output status=compatible
+      # or: wotr-output status=incompatible reason="3 pending"
 ```
 
+wotr polls all resources every 60 seconds and shows ownership/status as icons next to each worktree in the TUI. Press a resource's shortcut key to acquire it for the selected worktree.
+
+### Actions
+
+Actions are custom keyboard shortcuts bound to commands you run against a worktree:
+
+```yaml
+actions:
+  editor:
+    key: e
+    steps:
+      - fg: nvim .
+  test:
+    key: t
+    steps:
+      - bg: pnpm test
+```
+
+Actions use the same `bg:`/`fg:` step format as hooks.
+
 Personal overrides go in `.wotr/config.local` (add to `.gitignore`).
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────┐
+│                  wotr TUI                     │
+│                                               │
+│  Worktree list · Shortcuts · Log pane         │
+│                                               │
+└──────────────────┬───────────────────────────┘
+                   │
+     ┌─────────────┼─────────────┐
+     │             │             │
+     ▼             ▼             ▼
+ Worktree     Hook/Action    Resource
+ Manager      Engine         Manager
+ ─────────    ───────────    ────────────
+ create       runs bg/fg    polls inquire
+ delete       steps from    runs acquire
+ list         .wotr/config  maps icons
+ discover                   to worktrees
+     │             │             │
+     │             └──────┬──────┘
+     │                    │
+     ▼                    ▼
+ git worktree        .wotr/config
+                     (your scripts)
+```
+
+The **Worktree Manager** handles git operations directly. The **Hook/Action Engine** and **Resource Manager** both execute scripts defined in `.wotr/config` — hooks and actions run your lifecycle/workflow scripts, while the resource manager runs your acquire and inquire scripts to track shared infrastructure.
+
+## Log System
+
+All script output flows to a unified log pane with two display modes:
+
+- **Compact** (default) — shows only wotr's status messages. Script output is hidden but summarized: `Refreshing resource status... (12 lines)` with a dim preview of the last output line.
+- **Verbose** — shows everything.
+
+Toggle with `lv`. Copy log with `lc`. Copy log file path with `lp`.
+
+On script failure: wotr auto-switches to verbose, pins the scroll to the error (new output won't push it off screen), and renders the error in red.
+
+## Helper Scripts
+
+wotr ships with optional helpers for common patterns:
+
+| Script | Purpose |
+|--------|---------|
+| `wotr-default-setup` | Symlinks `.claude/` from repo root to worktree |
+| `wotr-launch-claude` | Launches Claude Code with `--continue` (resumes last session) |
+| `wotr-rename-tab` | Renames terminal tab to match branch name |
+| `wotr-output` | Emits structured JSON for inquire scripts |
+
+These are building blocks for `.wotr/config`, not requirements. Replace them with whatever fits your workflow.
 
 ## Usage
 

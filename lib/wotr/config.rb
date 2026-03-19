@@ -44,7 +44,7 @@ module Wotr
 
     def initialize(data, root: nil)
       @data = data
-      @log_path = root ? File.join(File.dirname(root), ".worktrees", File.basename(root), ".wotr", "scripts.log") : nil
+      @log_path = root ? File.join(File.dirname(root), ".worktrees", File.basename(root), ".wotr", "wotr.log") : nil
     end
 
     def log_path
@@ -168,7 +168,7 @@ module Wotr
       stdout, success = run_script_capture(script, env: env, chdir: chdir, label: "inquire:#{name}")
       data = parse_json_output(stdout)
 
-      { ran: true, success: !!success, data: data }
+      { ran: true, success: !!success, data: data, stdout: stdout }
     end
 
     private
