@@ -136,8 +136,6 @@ module Wotr
       puts USAGE
     end
 
-    SKILL_NAME = "wotr-init"
-
     def cmd_init
       repo = find_repo_or_exit
       config_path = File.join(repo.root, ".wotr", "config")
@@ -148,38 +146,36 @@ module Wotr
       end
 
       if claude_available?
-        skill_installed = skill_installed?(repo)
+        puts <<~MSG
 
-        unless skill_installed
-          puts <<~MSG
+          wotr can generate a tailored .wotr/config by analyzing your project
+          with Claude Code. It will look at your dev scripts, Docker setup,
+          database tooling, and ports to propose hooks and resources.
 
-            wotr can generate a tailored .wotr/config by analyzing your project
-            with Claude Code. It will look at your dev scripts, Docker setup,
-            database tooling, and ports to propose hooks and resources.
+        MSG
 
-            This installs a Claude Code skill (#{SKILL_NAME}) that guides the
-            interactive generation.
+        print "Use Claude Code to generate config? [Y/n] "
+        answer = $stdin.gets&.strip&.downcase || ""
 
-          MSG
+        if answer == "n"
+          basic_init(config_path)
+        else
+          skill_dir = File.join(gem_data_dir, "skills", "wotr-init")
+          skill_md = File.join(skill_dir, "SKILL.md")
+          refs_dir = File.join(skill_dir, "references")
 
-          print "Install the wotr-init skill? [Y/n/q] "
-          answer = $stdin.gets&.strip&.downcase || ""
-
-          case answer
-          when "q"
-            exit 0
-          when "n"
+          unless File.exist?(skill_md)
+            warn "wotr: skill data not found in gem (expected #{skill_md})"
+            warn "Falling back to basic init."
             basic_init(config_path)
             return
           end
 
-          install_skill(repo)
-          skill_installed = true
-        end
-
-        if skill_installed
           puts "\nLaunching Claude Code to generate .wotr/config...\n\n"
-          exec("claude", "--prompt", "wotr init")
+          exec("claude",
+               "--system-prompt-file", skill_md,
+               "--add-dir", refs_dir,
+               "--prompt", "Analyze this project and generate a .wotr/config file. Follow the workflow in your system prompt.")
         end
       else
         basic_init(config_path)
@@ -203,58 +199,6 @@ module Wotr
     def claude_available?
       ENV["PATH"].to_s.split(File::PATH_SEPARATOR).any? do |dir|
         File.executable?(File.join(dir, "claude"))
-      end
-    end
-
-    def skill_dir_candidates(repo)
-      [
-        File.join(repo.root, ".claude", "skills", SKILL_NAME),
-        File.expand_path("~/.claude/skills/#{SKILL_NAME}")
-      ]
-    end
-
-    def skill_installed?(repo)
-      skill_dir_candidates(repo).any? do |dir|
-        File.exist?(File.join(dir, "SKILL.md"))
-      end
-    end
-
-    def install_skill(repo)
-      source_dir = File.join(gem_data_dir, "skills", SKILL_NAME)
-
-      unless File.directory?(source_dir)
-        warn "wotr: skill data not found in gem (expected #{source_dir})"
-        warn "Falling back to basic init."
-        return false
-      end
-
-      puts "\nWhere should the skill be installed?"
-      puts "  1) This project only  (.claude/skills/#{SKILL_NAME}/)"
-      puts "  2) All projects       (~/.claude/skills/#{SKILL_NAME}/)"
-      print "\n> "
-      choice = $stdin.gets&.strip || "1"
-
-      target = case choice
-               when "2"
-                 File.expand_path("~/.claude/skills/#{SKILL_NAME}")
-               else
-                 File.join(repo.root, ".claude", "skills", SKILL_NAME)
-               end
-
-      copy_skill_files(source_dir, target)
-      puts "Installed #{SKILL_NAME} skill to #{target}/"
-      true
-    end
-
-    def copy_skill_files(source, target)
-      require 'fileutils'
-      Dir.glob(File.join(source, "**", "*")).each do |src_file|
-        next if File.directory?(src_file)
-
-        rel = src_file.sub("#{source}/", "")
-        dst = File.join(target, rel)
-        FileUtils.mkdir_p(File.dirname(dst))
-        FileUtils.cp(src_file, dst)
       end
     end
 
