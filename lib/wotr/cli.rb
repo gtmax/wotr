@@ -159,6 +159,7 @@ module Wotr
 
         if answer == "n"
           basic_init(config_path)
+          offer_skill_install(repo)
         else
           skill_dir = File.join(gem_data_dir, "skills", "wotr-init")
           skill_md = File.join(skill_dir, "SKILL.md")
@@ -168,8 +169,12 @@ module Wotr
             warn "wotr: skill data not found in gem (expected #{skill_md})"
             warn "Falling back to basic init."
             basic_init(config_path)
+            offer_skill_install(repo)
             return
           end
+
+          # Offer skill install before launching Claude (exec doesn't return)
+          offer_skill_install(repo)
 
           # Read skill materials and pass as system prompt context
           skill_content = File.read(skill_md)
@@ -184,6 +189,7 @@ module Wotr
         end
       else
         basic_init(config_path)
+        offer_skill_install(repo) if claude_available?
       end
     end
 
@@ -199,6 +205,36 @@ module Wotr
       end
 
       puts "Edit them to match your project's dev setup."
+    end
+
+    def offer_skill_install(repo)
+      skill_dir = File.join(gem_data_dir, "skills", "wotr-init")
+      return unless File.directory?(skill_dir)
+
+      target = File.join(repo.root, ".claude", "skills", "wotr-init")
+      return if File.exist?(File.join(target, "SKILL.md"))
+
+      puts <<~MSG
+
+        You can install the wotr-init skill into this project so Claude Code
+        can help you update .wotr/config anytime (e.g. "add a redis resource",
+        "update the switch hook").
+
+      MSG
+      print "Install wotr-init skill for ongoing config assistance? [y/N] "
+      answer = $stdin.gets&.strip&.downcase || ""
+
+      return unless answer == "y"
+
+      require 'fileutils'
+      Dir.glob(File.join(skill_dir, "**", "*")).each do |src|
+        next if File.directory?(src)
+        rel = src.sub("#{skill_dir}/", "")
+        dst = File.join(target, rel)
+        FileUtils.mkdir_p(File.dirname(dst))
+        FileUtils.cp(src, dst)
+      end
+      puts "Installed wotr-init skill to #{target}/"
     end
 
     def claude_available?
