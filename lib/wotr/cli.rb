@@ -171,11 +171,16 @@ module Wotr
             return
           end
 
+          # Read skill materials and pass as system prompt context
+          skill_content = File.read(skill_md)
+          Dir.glob(File.join(refs_dir, "*.md")).sort.each do |ref|
+            skill_content += "\n\n---\n# #{File.basename(ref)}\n\n#{File.read(ref)}"
+          end
+
           puts "\nLaunching Claude Code to generate .wotr/config...\n\n"
           exec("claude",
-               "--system-prompt-file", skill_md,
-               "--add-dir", refs_dir,
-               "--prompt", "Analyze this project and generate a .wotr/config file. Follow the workflow in your system prompt.")
+               "--append-system-prompt", skill_content,
+               "Analyze this project and generate a .wotr/config file. Follow the wotr-init workflow in your system prompt.")
         end
       else
         basic_init(config_path)
