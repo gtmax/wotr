@@ -5,8 +5,8 @@ require_relative 'lib/wotr/version'
 Gem::Specification.new do |spec|
   spec.name = 'wotr'
   spec.version = Wotr::VERSION
-  spec.authors = ['Ben Garcia']
-  spec.email = ['hey@bengarcia.dev']
+  spec.authors = ['Max Rozenoer']
+  spec.email = []
 
   spec.summary = 'A TUI tool to manage Git Worktrees for AI coding agents.'
   spec.description = 'Manages git worktrees for Claude Code sessions.'
@@ -20,7 +20,7 @@ Gem::Specification.new do |spec|
 
   # Specify which files should be added to the gem when it is released.
   spec.files = Dir.chdir(__dir__) do
-    Dir["{data,exe,lib,sig}/**/*", "README.md", "LICENSE.txt", "CHANGELOG.md", "CODE_OF_CONDUCT.md"]
+    Dir["{data,exe,lib,sig}/**/*", "README.md", "LICENSE.txt", "CHANGELOG.md"]
   end
   spec.bindir = 'exe'
   spec.executables = ['wotr', 'wotr-default-setup', 'wotr-launch-claude', 'wotr-output', 'wotr-rename-tab']
