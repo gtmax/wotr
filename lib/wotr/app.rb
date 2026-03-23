@@ -2,6 +2,7 @@
 
 require "ratatui_ruby"
 require "thread"
+require "pty"
 require_relative "repository"
 require_relative "worktree"
 require_relative "config"
@@ -356,23 +357,37 @@ module Wotr
     # Returns true if all steps succeeded (or failures were non-fatal).
     def self.run_bg_steps_in_thread(steps, env, chdir, cfg, main_queue)
       steps.each do |step|
-        cfg.send(:write_tmpscript, "#!/usr/bin/env bash\n#{step[:script]}") do |path|
-          IO.popen(env.merge("WOTR_LOG" => cfg.log_path || "/dev/null"),
-                   [path], chdir: chdir, err: [:child, :out]) do |io|
-            io.each_line { |line| main_queue << { type: :task_log_line, line: line.chomp } }
-          end
+        success = cfg.send(:write_tmpscript, "#!/usr/bin/env bash\n#{step[:script]}") do |path|
+          run_bg_with_pty(path, env.merge("WOTR_LOG" => cfg.log_path || "/dev/null"), chdir, main_queue)
         end
 
-        unless $?.success?
+        unless success
           if step[:stop_on_failure] != false
-            main_queue << { type: :task_complete, message: "Failed (exit #{$?.exitstatus})." }
+            main_queue << { type: :task_complete, message: "Failed." }
             return false
           else
-            main_queue << { type: :task_log_line, line: "Step exited #{$?.exitstatus} (continuing)" }
+            main_queue << { type: :task_log_line, line: "Step failed (continuing)" }
           end
         end
       end
       true
+    end
+
+    # Run a command in a PTY so it thinks it has a terminal (enabling line-buffered output).
+    # Streams each line to main_queue and returns true/false for success.
+    def self.run_bg_with_pty(path, env, chdir, main_queue)
+      exit_status = nil
+      Dir.chdir(chdir) do
+        PTY.spawn(env, path) do |reader, _writer, pid|
+          reader.each_line { |line| main_queue << { type: :task_log_line, line: line.chomp } }
+        rescue Errno::EIO
+          # Expected when child exits — PTY master gets EIO
+        ensure
+          _, status = Process.wait2(pid)
+          exit_status = status
+        end
+      end
+      exit_status&.success? || false
     end
 
     # Suspend TUI and run foreground steps sequentially.
