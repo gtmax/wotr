@@ -81,6 +81,7 @@ module Wotr
         wotr resources                List configured resources
         wotr run <hook>               Run a config hook (e.g. new, switch)
         wotr init                     Scaffold .wotr/config in current repo
+        wotr skill install            Install wotr-config skill for Claude Code
         wotr status [--json]          Show current branch
         wotr list                     List all worktrees
         wotr log [-f] [-n N] [--path] Tail the scripts log
@@ -110,6 +111,7 @@ module Wotr
       when "version"                  then cmd_version
       when "help", "--help", "-h"     then cmd_help
       when "init"                     then cmd_init
+      when "skill"                    then cmd_skill(args)
       when "status"                   then cmd_status(args)
       when "list"                     then cmd_list
       when "acquire"                  then cmd_acquire(args)
@@ -159,9 +161,8 @@ module Wotr
 
         if answer == "n"
           basic_init(config_path)
-          offer_skill_install(repo)
         else
-          skill_dir = File.join(gem_data_dir, "skills", "wotr-init")
+          skill_dir = File.join(gem_data_dir, "skills", "wotr-config")
           skill_md = File.join(skill_dir, "SKILL.md")
           refs_dir = File.join(skill_dir, "references")
 
@@ -169,27 +170,29 @@ module Wotr
             warn "wotr: skill data not found in gem (expected #{skill_md})"
             warn "Falling back to basic init."
             basic_init(config_path)
-            offer_skill_install(repo)
             return
           end
-
-          # Offer skill install before launching Claude (exec doesn't return)
-          offer_skill_install(repo)
 
           # Read skill materials and pass as system prompt context
           skill_content = File.read(skill_md)
           Dir.glob(File.join(refs_dir, "*.md")).sort.each do |ref|
+            next if File.basename(ref) == "skill-install.md"
             skill_content += "\n\n---\n# #{File.basename(ref)}\n\n#{File.read(ref)}"
+          end
+
+          # Append skill-install instructions last (only relevant during wotr init)
+          install_ref = File.join(refs_dir, "skill-install.md")
+          if File.exist?(install_ref)
+            skill_content += "\n\n---\n# #{File.basename(install_ref)}\n\n#{File.read(install_ref)}"
           end
 
           puts "\nLaunching Claude Code to generate .wotr/config...\n\n"
           exec("claude",
                "--append-system-prompt", skill_content,
-               "Analyze this project and generate a .wotr/config file. Follow the wotr-init workflow in your system prompt.")
+               "Analyze this project and generate a .wotr/config file. Follow the wotr-config workflow in your system prompt.")
         end
       else
         basic_init(config_path)
-        offer_skill_install(repo) if claude_available?
       end
     end
 
@@ -207,34 +210,45 @@ module Wotr
       puts "Edit them to match your project's dev setup."
     end
 
-    def offer_skill_install(repo)
-      skill_dir = File.join(gem_data_dir, "skills", "wotr-init")
-      return unless File.directory?(skill_dir)
+    def cmd_skill(args)
+      subcmd = args[0]
 
-      target = File.join(repo.root, ".claude", "skills", "wotr-init")
-      return if File.exist?(File.join(target, "SKILL.md"))
+      case subcmd
+      when "install"
+        skill_install
+      else
+        warn "Usage: wotr skill install"
+        warn ""
+        warn "Installs the wotr-config skill into this project so Claude Code"
+        warn "can help you update .wotr/config anytime."
+        exit 1
+      end
+    end
 
-      puts <<~MSG
+    def skill_install
+      repo = find_repo_or_exit
+      skill_dir = File.join(gem_data_dir, "skills", "wotr-config")
 
-        You can install the wotr-init skill into this project so Claude Code
-        can help you update .wotr/config anytime (e.g. "add a redis resource",
-        "update the switch hook").
+      unless File.directory?(skill_dir)
+        warn "wotr: skill data not found in gem (expected #{skill_dir})"
+        exit 1
+      end
 
-      MSG
-      print "Install wotr-init skill for ongoing config assistance? [y/N] "
-      answer = $stdin.gets&.strip&.downcase || ""
+      target = File.join(repo.root, ".claude", "skills", "wotr-config")
 
-      return unless answer == "y"
+      reinstall = File.exist?(File.join(target, "SKILL.md"))
 
       require 'fileutils'
       Dir.glob(File.join(skill_dir, "**", "*")).each do |src|
         next if File.directory?(src)
+        next if File.basename(src) == "skill-install.md"
         rel = src.sub("#{skill_dir}/", "")
         dst = File.join(target, rel)
         FileUtils.mkdir_p(File.dirname(dst))
         FileUtils.cp(src, dst)
       end
-      puts "Installed wotr-init skill to #{target}/"
+      verb = reinstall ? "Updated" : "Installed"
+      puts "#{verb} wotr-config skill at #{target}/"
     end
 
     def claude_available?

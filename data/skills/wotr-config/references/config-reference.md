@@ -41,8 +41,8 @@ All sections (`hooks`, `actions`, `resources`) are optional.
 
 Runs inside the newly created worktree directory. Typical uses:
 - Install dependencies (`npm ci`, `pnpm install`, `bundle install`)
-- Symlink shared config files (`.env`, credentials)
-- Copy files that can't be symlinked (Docker requires real files, not symlinks)
+- Copy config/env files from the main checkout (default — gives each worktree independence)
+- Symlink files only when they must always stay in sync across all worktrees (e.g., shared credentials, actively maintained tooling config that's never customized per-branch)
 - Run `wotr-default-setup` first to symlink `.claude/` contents
 
 ### `switch`

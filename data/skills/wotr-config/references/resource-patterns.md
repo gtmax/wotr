@@ -280,7 +280,9 @@ hooks:
     - fg: wotr-launch-claude
 ```
 
-### Symlink Pattern for Shared Files
+### Config File Pattern
+
+**Default: copy.** Each worktree gets its own independent copy so edits in one worktree don't affect others. Only symlink when there is a clear benefit — the file is actively maintained, changes frequently, and all worktrees must always see the latest version (e.g., shared credentials, tooling config that's never customized per-branch).
 
 ```yaml
 hooks:
@@ -288,23 +290,24 @@ hooks:
     - bg: |
         wotr-default-setup
 
-        # Symlink shared env files
-        for file in .env.development.local .env.test.local; do
-          src="$WOTR_ROOT/$file"
-          dst="$file"
-          if [ -f "$src" ] && [ ! -e "$dst" ]; then
-            ln -sf "$src" "$dst"
-            echo "  Symlinked $dst"
-          fi
-        done
-
-        # Copy files that must be real (e.g., Docker-mounted)
-        for file in .docker.env; do
+        # Copy config/env files (default — worktree independence)
+        for file in .env .env.test .env.development.local; do
           src="$WOTR_ROOT/$file"
           dst="$file"
           if [ -f "$src" ] && [ ! -e "$dst" ]; then
             cp "$src" "$dst"
             echo "  Copied $dst"
+          fi
+        done
+
+        # Symlink files that must always stay in sync across worktrees
+        # (e.g., shared credentials, actively maintained config never customized per-branch)
+        for file in .credentials.json; do
+          src="$WOTR_ROOT/$file"
+          dst="$file"
+          if [ -f "$src" ] && [ ! -e "$dst" ]; then
+            ln -sf "$src" "$dst"
+            echo "  Symlinked $dst"
           fi
         done
 ```
