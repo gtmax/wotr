@@ -551,21 +551,29 @@ module Wotr
       if worktree.needs_setup?
         # Chain: run new hook → switch hook
         steps = cfg.hook_steps("new")
+        model.log_status("No 'new' hook configured in .wotr/config") if steps.empty?
         on_complete = { type: :run_hook_chain, hook: "switch", worktree: worktree }
 
         run_hook_steps(steps, "new", env, worktree, model, tui, main_queue, on_complete: on_complete) do
           worktree.mark_setup_complete!
         end
       else
-        run_hook_steps(cfg.hook_steps("switch"), "switch", env, worktree, model, tui, main_queue)
+        steps = cfg.hook_steps("switch")
+        if steps.empty?
+          model.log_status("No 'switch' hook configured in .wotr/config")
+        else
+          run_hook_steps(steps, "switch", env, worktree, model, tui, main_queue)
+        end
       end
     end
 
     # Run a hook by name (used by :run_hook_chain command for chaining new→switch).
     def self.run_hook_chain(hook_name, worktree, model, tui, main_queue)
       cfg = model.repository.config
+      steps = cfg.hook_steps(hook_name)
+      model.log_status("No '#{hook_name}' hook configured in .wotr/config") if steps.empty?
       env = { "WOTR_ROOT" => File.realpath(model.repository.root), "WOTR_WORKTREE" => worktree.path }
-      run_hook_steps(cfg.hook_steps(hook_name), hook_name, env, worktree, model, tui, main_queue, clear_log: false)
+      run_hook_steps(steps, hook_name, env, worktree, model, tui, main_queue, clear_log: false)
     end
 
     # Unified hook/step execution: bg steps in log pane, fg steps suspend TUI.
@@ -573,8 +581,11 @@ module Wotr
     # clear_log: whether to clear the log pane (false for chained hooks).
     # block: optional callback invoked after bg steps complete (e.g. mark_setup_complete!).
     def self.run_hook_steps(steps, label, env, worktree, model, tui, main_queue, on_complete: nil, clear_log: true, &after_bg)
-      return handle_command(on_complete, model, tui, main_queue) if steps.empty? && on_complete
-      return if steps.empty?
+      if steps.empty?
+        after_bg&.call
+        return handle_command(on_complete, model, tui, main_queue) if on_complete
+        return
+      end
 
       wt_label = worktree.branch || worktree.name
       cfg = model.repository.config

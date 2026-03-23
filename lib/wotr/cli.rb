@@ -12,11 +12,11 @@ module Wotr
       #   - bg: <script>   # runs in TUI log pane (non-interactive)
       #   - fg: <script>   # suspends TUI, takes the terminal (interactive)
 
-      # hooks:
-      #   new:
-      #     - bg: wotr-default-setup && pnpm install --frozen-lockfile
-      #   switch:
-      #     - fg: wotr-launch-claude
+      hooks:
+        new:
+          - bg: wotr-default-setup
+        switch:
+          - fg: wotr-launch-claude
 
       # actions:
       #   lint:
