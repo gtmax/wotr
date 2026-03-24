@@ -85,6 +85,7 @@ case "$COMMAND" in
     ensure_ruby
     BUNDLE="$(dirname "$RUBY")/bundle"
     echo "Using Ruby $("$RUBY" -e 'print RUBY_VERSION')"
+    "$BUNDLE" check >/dev/null 2>&1 || "$BUNDLE" install
     exec "$BUNDLE" exec "$RUBY" -Ilib -Itest -e "Dir.glob('test/**/test_*.rb').each { |f| require File.expand_path(f) }"
     ;;
   *)
