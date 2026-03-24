@@ -292,7 +292,12 @@ module Wotr
         @repository.config.action_names.each_with_object({}) do |name, result|
           cfg = @repository.config.action(name)
           key = cfg&.fetch("key", nil)
-          next unless key && key.length == 1 && key =~ /[a-z]/ && !taken.include?(key)
+          next unless key && key.length == 1 && key =~ /[a-z]/
+          if taken.include?(key)
+            owner = result[key] || "a built-in shortcut"
+            log_status("shortcut collision: action '#{name}' wants key '#{key}' already used by #{owner}", style: :warn)
+            next
+          end
           result[key] = name
           taken << key
         end
@@ -308,7 +313,10 @@ module Wotr
         taken = RESERVED_KEYS.dup + action_shortcuts.keys
         @repository.config.resource_names.each_with_object({}) do |name, result|
           letter = name.chars.find { |c| c =~ /[a-z]/ && !taken.include?(c) }
-          next unless letter
+          unless letter
+            log_status("shortcut collision: resource '#{name}' has no available letter for a shortcut", style: :warn)
+            next
+          end
           result[letter] = name
           taken << letter
         end

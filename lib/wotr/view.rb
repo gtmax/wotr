@@ -265,6 +265,7 @@ module Wotr
       text = lines.flat_map do |entry|
         style = case entry[:style]
                 when :error then tui.style(fg: :white, bg: :red, modifiers: [:bold])
+                when :warn then tui.style(fg: :yellow)
                 when :normal then tui.style(**THEME[:text])
                 else tui.style(**THEME[:dim])
                 end
