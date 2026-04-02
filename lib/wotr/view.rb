@@ -327,7 +327,7 @@ module Wotr
       draw_log_legend(model, tui, frame, area)
 
       # Double spinner inside the log pane, upper-right with margin
-      if model.background_activity?
+      if model.background_activity? && area.width >= 4 && area.height >= 4
         n = (Time.now.to_f * 10).to_i
         top_char = SPINNER[n % SPINNER.length]
         bot_char = SPINNER[(n + SPINNER.length / 2) % SPINNER.length]
@@ -367,6 +367,7 @@ module Wotr
       total_w = " lv current log mode: #{mode_label} lc copy log to clipboard lp copy logfile path to clipboard ".length + 1
 
       cx = area.x + area.width - total_w - 1
+      return if cx < 0
       cy = area.y + area.height - 1
 
       legend_widget = tui.paragraph(
