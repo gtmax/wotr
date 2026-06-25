@@ -94,21 +94,21 @@ module Wotr
       assert File.symlink?(File.join(wt.path, "node_modules"))
     end
 
-    def test_run_teardown_with_script
+    def test_run_teardown_with_hook
       result = @repo.create_worktree("teardown-test")
       wt = result[:worktree]
       assert result[:success], "Expected success: #{result[:error]}"
 
-      FileUtils.mkdir_p(@repo.config_dir)
-      File.write(@repo.teardown_script_path, "#!/bin/bash\necho 'teardown' > \"$WOTR_ROOT/teardown.txt\"")
-      FileUtils.chmod(0o755, @repo.teardown_script_path)
+      write_teardown_hook(<<~SH)
+        echo "teardown" > "$WOTR_ROOT/teardown.txt"
+      SH
 
       capture_io { wt.run_teardown! }
 
       assert File.exist?(File.join(@tmpdir, "teardown.txt"))
     end
 
-    def test_run_teardown_returns_ran_false_without_script
+    def test_run_teardown_returns_ran_false_without_hook
       result = @repo.create_worktree("no-teardown")
       wt = result[:worktree]
       assert result[:success], "Expected success: #{result[:error]}"
@@ -136,9 +136,9 @@ module Wotr
       assert result[:success], "Expected success: #{result[:error]}"
       wt.mark_setup_complete!
 
-      FileUtils.mkdir_p(@repo.config_dir)
-      File.write(@repo.teardown_script_path, "#!/bin/bash\necho 'ran' > \"$WOTR_ROOT/deleted.txt\"")
-      FileUtils.chmod(0o755, @repo.teardown_script_path)
+      write_teardown_hook(<<~SH)
+        echo "ran" > "$WOTR_ROOT/deleted.txt"
+      SH
 
       capture_io { wt.delete!(force: true) }
 
@@ -151,9 +151,7 @@ module Wotr
       assert result[:success], "Expected success: #{result[:error]}"
       wt.mark_setup_complete!
 
-      FileUtils.mkdir_p(@repo.config_dir)
-      File.write(@repo.teardown_script_path, "#!/bin/bash\nexit 1")
-      FileUtils.chmod(0o755, @repo.teardown_script_path)
+      write_teardown_hook("exit 1")
 
       capture_io { wt.delete!(force: false) }
       delete_result = wt.delete!(force: false)
@@ -223,6 +221,5 @@ module Wotr
 
       refute Dir.exist?(parent_dir), "Parent dir should be removed when empty"
     end
-
   end
 end

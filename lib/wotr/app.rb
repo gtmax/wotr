@@ -188,8 +188,12 @@ module Wotr
         label = wt.branch || wt.name
         force_label = cmd[:force] ? " (force)" : ""
 
-        if model.repository.has_teardown_script?
-          # Teardown may be interactive — must suspend TUI
+        cfg = model.repository.config
+        teardown_steps = cfg.hook_steps("teardown")
+        interactive_teardown = teardown_steps.any? { |s| s[:mode] == :foreground }
+
+        if interactive_teardown
+          # A foreground teardown step may be interactive — must suspend TUI
           model.set_message("Deleting #{label}#{force_label}...")
           tui.draw { |frame| View.draw(model, tui, frame) }
 
@@ -201,34 +205,49 @@ module Wotr
           RatatuiRuby.init_terminal
           handle_command(result, model, tui, main_queue)
         else
-          # No teardown — run inline with log pane
+          # No foreground teardown — stream teardown (if any) and removal to the log pane
           model.start_task_log("Deleting #{label}#{force_label}")
           model.set_message("Deleting #{label}#{force_label}...")
           model.start_background_activity
 
           force = cmd[:force] || false
+          repo_root = File.realpath(model.repository.root)
+          env = { "WOTR_ROOT" => repo_root, "WOTR_WORKTREE" => wt.path }
+
           Thread.new do
-            main_queue << { type: :task_log_line, line: "Removing worktree #{wt.path}..." }
+            teardown_ok = true
+            if wt.exists? && teardown_steps.any?
+              main_queue << { type: :task_log_line, line: "Running teardown..." }
+              teardown_ok = run_teardown_in_log_pane(teardown_steps, env, wt.path, cfg, main_queue)
+            end
 
-            result = wt.delete!(force: force)
-
-            if result[:success]
-              if result[:warning]
-                main_queue << { type: :task_log_line, line: "Warning: #{result[:warning]}" }
-                main_queue << { type: :task_complete,
-                                result: nil,
-                                message: "Warning: #{result[:warning]}. Use 'D' to force delete." }
-              else
-                main_queue << { type: :task_log_line, line: "Done." }
-                main_queue << { type: :task_complete,
-                                result: { type: :refresh_list },
-                                message: "Deleted worktree #{label}." }
-              end
-            else
-              main_queue << { type: :task_log_line, line: "Error: #{result[:error]}" }
+            if !teardown_ok && !force
+              main_queue << { type: :task_log_line, line: "Teardown failed." }
               main_queue << { type: :task_complete,
                               result: nil,
-                              message: "Error deleting: #{result[:error]}. Use 'D' to force delete." }
+                              message: "Teardown failed. Use 'D' to force delete." }
+            else
+              main_queue << { type: :task_log_line, line: "Removing worktree #{wt.path}..." }
+              result = wt.delete!(force: force, skip_teardown: true)
+
+              if result[:success]
+                if result[:warning]
+                  main_queue << { type: :task_log_line, line: "Warning: #{result[:warning]}" }
+                  main_queue << { type: :task_complete,
+                                  result: nil,
+                                  message: "Warning: #{result[:warning]}. Use 'D' to force delete." }
+                else
+                  main_queue << { type: :task_log_line, line: "Done." }
+                  main_queue << { type: :task_complete,
+                                  result: { type: :refresh_list },
+                                  message: "Deleted worktree #{label}." }
+                end
+              else
+                main_queue << { type: :task_log_line, line: "Error: #{result[:error]}" }
+                main_queue << { type: :task_complete,
+                                result: nil,
+                                message: "Error deleting: #{result[:error]}. Use 'D' to force delete." }
+              end
             end
           rescue StandardError => e
             main_queue << { type: :task_log_line, line: "Error: #{e.message}" }
@@ -379,6 +398,21 @@ module Wotr
         end
       end
       true
+    end
+
+    # Run teardown steps in the log pane via PTY, returning the success of the
+    # last executed step (mirrors Config#run_hook's stop_on_failure semantics).
+    # Unlike run_bg_steps_in_thread, it emits no task_complete — the delete flow
+    # owns completion so it can chain the worktree/branch removal afterward.
+    def self.run_teardown_in_log_pane(steps, env, chdir, cfg, main_queue)
+      last_success = true
+      steps.each do |step|
+        last_success = cfg.send(:write_tmpscript, "#!/usr/bin/env bash\n#{step[:script]}") do |path|
+          run_bg_with_pty(path, env.merge("WOTR_LOG" => cfg.log_path || "/dev/null"), chdir, main_queue)
+        end
+        break if !last_success && step[:stop_on_failure] != false
+      end
+      last_success
     end
 
     # Run a command in a PTY so it thinks it has a terminal (enabling line-buffered output).

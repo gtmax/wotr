@@ -158,16 +158,21 @@ module Wotr
       assert_equal File.join(@tmpdir, ".wotr"), repo.config_dir
     end
 
-    def test_has_teardown_script
+    def test_has_teardown_hook
       repo = Repository.new(@tmpdir)
 
-      refute repo.has_teardown_script?
+      refute repo.has_teardown_hook?
 
       FileUtils.mkdir_p(repo.config_dir)
-      File.write(repo.teardown_script_path, "#!/bin/bash\necho bye")
-      FileUtils.chmod(0o755, repo.teardown_script_path)
+      File.write(File.join(repo.config_dir, "config"), <<~YAML)
+        hooks:
+          teardown:
+            - bg: echo bye
+      YAML
 
-      assert repo.has_teardown_script?
+      # Config is memoized — re-read for the second assertion
+      fresh_repo = Repository.new(@tmpdir)
+      assert fresh_repo.has_teardown_hook?
     end
 
     def test_find_worktree_by_name

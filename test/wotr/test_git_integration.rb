@@ -71,31 +71,31 @@ module Wotr
 
     # ========== Teardown Tests ==========
 
-    def test_run_teardown_executes_script
+    def test_run_teardown_executes_hook
       result = @repo.create_worktree("test-session")
       wt = result[:worktree]
       assert result[:success], "Expected success: #{result[:error]}"
 
-      FileUtils.mkdir_p(@repo.config_dir)
-      File.write(@repo.teardown_script_path, "#!/bin/bash\necho 'teardown ran' > \"$WOTR_ROOT/teardown_ran.txt\"")
-      FileUtils.chmod(0o755, @repo.teardown_script_path)
+      write_teardown_hook(<<~SH)
+        echo "teardown ran" > "$WOTR_ROOT/teardown_ran.txt"
+      SH
 
       output = capture_io { wt.run_teardown! }.join
 
       assert File.exist?(File.join(@tmpdir, "teardown_ran.txt")),
-             "Teardown script should have created file"
-      assert_match(/Running .wotr\/teardown/, output,
+             "Teardown hook should have created file"
+      assert_match(/Running hook: teardown/, output,
              "Should show teardown header")
     end
 
-    def test_run_teardown_returns_ran_false_when_no_script
+    def test_run_teardown_returns_ran_false_when_no_hook
       result = @repo.create_worktree("test-session")
       wt = result[:worktree]
       assert result[:success], "Expected success: #{result[:error]}"
 
       teardown_result = wt.run_teardown!
 
-      refute teardown_result[:ran], "Should return ran: false when no script"
+      refute teardown_result[:ran], "Should return ran: false when no hook"
     end
 
     def test_run_teardown_returns_success_status
@@ -103,9 +103,7 @@ module Wotr
       wt = result[:worktree]
       assert result[:success], "Expected success: #{result[:error]}"
 
-      FileUtils.mkdir_p(@repo.config_dir)
-      File.write(@repo.teardown_script_path, "#!/bin/bash\nexit 0")
-      FileUtils.chmod(0o755, @repo.teardown_script_path)
+      write_teardown_hook("exit 0")
 
       capture_io { wt.run_teardown! }
       teardown_result = wt.run_teardown!
@@ -119,9 +117,7 @@ module Wotr
       wt = result[:worktree]
       assert result[:success], "Expected success: #{result[:error]}"
 
-      FileUtils.mkdir_p(@repo.config_dir)
-      File.write(@repo.teardown_script_path, "#!/bin/bash\nexit 1")
-      FileUtils.chmod(0o755, @repo.teardown_script_path)
+      write_teardown_hook("exit 1")
 
       capture_io { wt.run_teardown! }
       teardown_result = wt.run_teardown!
@@ -138,14 +134,34 @@ module Wotr
       assert result[:success], "Expected success: #{result[:error]}"
       wt.mark_setup_complete!
 
-      FileUtils.mkdir_p(@repo.config_dir)
-      File.write(@repo.teardown_script_path, "#!/bin/bash\necho 'teardown ran' > \"$WOTR_ROOT/teardown_evidence.txt\"")
-      FileUtils.chmod(0o755, @repo.teardown_script_path)
+      write_teardown_hook(<<~SH)
+        echo "teardown ran" > "$WOTR_ROOT/teardown_evidence.txt"
+      SH
 
       capture_io { wt.delete!(force: true) }
 
       assert File.exist?(File.join(@tmpdir, "teardown_evidence.txt")),
              "Teardown should have run before removal"
+    end
+
+    def test_delete_skip_teardown_does_not_run_hook
+      result = @repo.create_worktree("test-session")
+      wt = result[:worktree]
+      assert result[:success], "Expected success: #{result[:error]}"
+      wt.mark_setup_complete!
+
+      # An always-failing teardown would normally block a non-force delete; with
+      # skip_teardown the caller has already run it, so removal proceeds regardless.
+      write_teardown_hook(<<~SH)
+        echo "teardown ran" > "$WOTR_ROOT/teardown_evidence.txt"
+        exit 1
+      SH
+
+      capture_io { wt.delete!(force: false, skip_teardown: true) }
+
+      refute File.exist?(File.join(@tmpdir, "teardown_evidence.txt")),
+             "Teardown hook should NOT run when skip_teardown is set"
+      refute wt.exists?, "Worktree should be removed even though teardown would have failed"
     end
 
     def test_delete_fails_on_teardown_failure_without_force
@@ -154,9 +170,7 @@ module Wotr
       assert result[:success], "Expected success: #{result[:error]}"
       wt.mark_setup_complete!
 
-      FileUtils.mkdir_p(@repo.config_dir)
-      File.write(@repo.teardown_script_path, "#!/bin/bash\nexit 1")
-      FileUtils.chmod(0o755, @repo.teardown_script_path)
+      write_teardown_hook("exit 1")
 
       capture_io { wt.delete!(force: false) }
       delete_result = wt.delete!(force: false)
@@ -172,9 +186,7 @@ module Wotr
       assert result[:success], "Expected success: #{result[:error]}"
       wt.mark_setup_complete!
 
-      FileUtils.mkdir_p(@repo.config_dir)
-      File.write(@repo.teardown_script_path, "#!/bin/bash\nexit 1")
-      FileUtils.chmod(0o755, @repo.teardown_script_path)
+      write_teardown_hook("exit 1")
 
       capture_io { wt.delete!(force: true) }
       delete_result = wt.delete!(force: true)
@@ -192,10 +204,10 @@ module Wotr
       assert result[:success], "Expected success: #{result[:error]}"
       assert wt.needs_setup?
 
-      # 2. Create teardown script
-      FileUtils.mkdir_p(@repo.config_dir)
-      File.write(@repo.teardown_script_path, "#!/bin/bash\necho 'teardown' > \"$WOTR_ROOT/teardown.log\"")
-      FileUtils.chmod(0o755, @repo.teardown_script_path)
+      # 2. Create teardown hook
+      write_teardown_hook(<<~SH)
+        echo "teardown" > "$WOTR_ROOT/teardown.log"
+      SH
 
       # 3. Run setup (simulating first resume — falls back to default symlinks)
       wt.run_setup!(visible: false)

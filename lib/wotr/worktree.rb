@@ -71,21 +71,32 @@ module Wotr
       @repository.config.run_hook("switch", env: env, chdir: @path, visible: true)
     end
 
-    # Run teardown script if it exists
+    # Run the teardown hook (fires before worktree deletion).
+    # Failure is surfaced via the return value, not an inline prompt — the TUI
+    # reports it through delete!'s error path.
     # Returns { ran: Boolean, success: Boolean }
     def run_teardown!
-      return { ran: false } unless @repository.has_teardown_script?
+      return { ran: false } unless @repository.has_teardown_hook?
 
-      success = run_hook(@repository.teardown_script_path, label: ".wotr/teardown")
-      { ran: true, success: success }
+      env = { "WOTR_ROOT" => File.realpath(@repository.root), "WOTR_WORKTREE" => @path }
+      result = @repository.config.run_hook(
+        "teardown",
+        env: env,
+        chdir: @path,
+        visible: true,
+        prompt_on_failure: false,
+      )
+      { ran: result[:ran], success: result[:success] }
     end
 
     # Delete this worktree and its branch
     # force: true to force delete even with uncommitted changes
+    # skip_teardown: true when the caller already ran the teardown hook itself
+    #   (e.g. streamed to the TUI log pane) and just wants the removal steps.
     # Returns { success: Boolean, error: String?, warning: String? }
-    def delete!(force: false)
+    def delete!(force: false, skip_teardown: false)
       # Step 0: Run teardown script if directory exists
-      if exists?
+      if exists? && !skip_teardown
         result = run_teardown!
         if result[:ran] && !result[:success] && !force
           return { success: false, error: "Teardown script failed. Use 'D' to force delete." }
@@ -141,35 +152,6 @@ module Wotr
 
     def setup_marker_path
       File.join(@path, SETUP_MARKER)
-    end
-
-    def run_hook(script_path, label:, visible: true)
-      if visible
-        puts "\e[1;36m🌊 Running #{label} 🌊\e[0m"
-        puts
-      end
-
-      success = system(
-        { "WOTR_ROOT" => File.realpath(@repository.root) },
-        script_path,
-        chdir: @path
-      )
-
-      puts if visible
-
-      unless success
-        if visible
-          puts "\e[1;33mWarning: #{label} failed (exit code: #{$?.exitstatus})\e[0m"
-          print "Press Enter to continue or Ctrl+C to abort..."
-          begin
-            STDIN.gets
-          rescue Interrupt
-            raise
-          end
-        end
-      end
-
-      success
     end
 
     def setup_default_symlinks

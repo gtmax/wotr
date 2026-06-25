@@ -92,9 +92,12 @@ module Wotr
       @data.empty?
     end
 
-    # Run a named hook (new, switch) via CLI (wotr run <hook>).
+    # Run a named hook (new, switch, teardown) via CLI (wotr run <hook>).
+    # prompt_on_failure: when true and visible, pause for Enter on failure so the user
+    # can read the error before the TUI redraws. Set false for hooks (e.g. teardown) where
+    # the caller surfaces failures through its own UI.
     # Returns { ran: Boolean, success: Boolean, ran_foreground: Boolean }
-    def run_hook(name, env: {}, chdir: Dir.pwd, visible: false)
+    def run_hook(name, env: {}, chdir: Dir.pwd, visible: false, prompt_on_failure: true)
       steps = hook_steps(name)
       return { ran: false, ran_foreground: false } if steps.empty?
 
@@ -125,7 +128,7 @@ module Wotr
 
       puts if visible
 
-      if visible && !last_success
+      if visible && !last_success && prompt_on_failure
         puts "\e[1;33mWarning: hook '#{name}' failed\e[0m"
         print "Press Enter to continue or Ctrl+C to abort..."
         begin

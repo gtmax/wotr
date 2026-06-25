@@ -3,6 +3,10 @@
 ### Added
 - **Worktrees for existing branches**: Allow creation of worktrees from branches that already exist.
 - **Paste support**: Support pasting into new branch and filtering dialogs.
+- **Teardown via `.wotr/config`**: Teardown is now declared under the `hooks:` block alongside `new`/`switch`, supporting `bg`/`fg` steps and YAML-embedded scripts.
+
+### Changed
+- **BREAKING**: Removed legacy `.wotr/teardown` executable script in favour of `hooks.teardown` in `.wotr/config`. Repos that defined a `.wotr/teardown` file must move its body into the config under `hooks: teardown: - bg: |`.
 
 ## [0.1.4] - 2026-01-30
 

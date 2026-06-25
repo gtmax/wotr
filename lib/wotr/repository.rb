@@ -39,12 +39,8 @@ module Wotr
       File.join(@root, CONFIG_DIR)
     end
 
-    def teardown_script_path
-      File.join(config_dir, "teardown")
-    end
-
-    def has_teardown_script?
-      File.exist?(teardown_script_path) && File.executable?(teardown_script_path)
+    def has_teardown_hook?
+      config.hook_steps("teardown").any?
     end
 
     def config
