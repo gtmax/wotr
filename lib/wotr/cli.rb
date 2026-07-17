@@ -76,6 +76,7 @@ module Wotr
       Usage:
         wotr                          Launch TUI
         wotr --repo-path <path> ...   Run any command against a different repo
+        wotr new <branch> [--switch]  Create a worktree (--switch to enter it)
         wotr acquire <resource>       Run resource acquire script
         wotr inquire [resource]       Run resource inquire script(s), print JSON
         wotr resources                List configured resources
@@ -90,9 +91,15 @@ module Wotr
         wotr version                  Print version
         wotr help                     Show this help
 
+      Options for 'new':
+        --switch   Enter the new worktree: run setup + the 'switch' hook
+                   (rename tab, launch editor/claude, …), then open a shell in it.
+                   Without it, 'new' just creates the worktree and returns.
+
       Environment:
-        WOTR_ROOT       Repo root (set automatically in scripts)
-        WOTR_WORKTREE   Current worktree path (set automatically in scripts)
+        WOTR_ROOT         Repo root (set automatically in scripts)
+        WOTR_WORKTREE     Current worktree path (set automatically in scripts)
+        WOTR_START_POINT  Base ref for new branches (default: origin/<default-branch>)
     USAGE
 
     def self.run(argv)
@@ -111,6 +118,7 @@ module Wotr
       when "version"                  then cmd_version
       when "help", "--help", "-h"     then cmd_help
       when "init"                     then cmd_init
+      when "new"                      then cmd_new(args)
       when "skill"                    then cmd_skill(args)
       when "status"                   then cmd_status(args)
       when "list"                     then cmd_list
@@ -208,6 +216,62 @@ module Wotr
       end
 
       puts "Edit them to match your project's dev setup."
+    end
+
+    # Create a new worktree, branched from origin/<default-branch>.
+    #
+    # Mirrors the TUI's two-hook model: creating a worktree only marks it as
+    # needing setup — the 'new' (setup) and 'switch' hooks both run when you
+    # *enter* it. So by default this is create-only (returns immediately, safe
+    # to script). Pass --switch to enter the worktree: run setup (if needed),
+    # run the 'switch' hook (rename tab, launch editor/claude, …), then drop
+    # into a shell in the worktree.
+    #
+    # Idempotent: if a worktree for <branch> already exists, we act on it
+    # instead of failing (a no-op with no flags; enter it with --switch).
+    def cmd_new(args)
+      switch = args.delete("--switch")
+
+      name = args.find { |a| !a.start_with?("--") }
+      if name.nil? || name.strip.empty?
+        warn "Usage: wotr new <branch> [--switch]"
+        exit 1
+      end
+
+      repo = find_repo_or_exit
+
+      worktree = repo.find_worktree(name)
+      if worktree
+        puts "Worktree '#{worktree.branch}' already exists at #{worktree.path}"
+      else
+        result = repo.create_worktree(name)
+        unless result[:success]
+          warn "wotr: failed to create worktree '#{name}': #{result[:error]}"
+          exit 1
+        end
+
+        worktree = result[:worktree]
+        puts "Created worktree '#{worktree.branch}' at #{worktree.path}"
+      end
+
+      # Default: create only. Setup is deferred until the worktree is entered,
+      # just like the TUI.
+      return unless switch
+
+      # Enter the worktree: chdir + OSC 7 so the terminal picks up the new CWD,
+      # run setup once (if still needed), run the 'switch' hook, then hand the
+      # caller a shell rooted in the worktree.
+      Dir.chdir(worktree.path)
+      print "\e]7;file://localhost#{worktree.path}\e\\"
+
+      if worktree.needs_setup?
+        worktree.run_setup!(visible: true)
+        worktree.mark_setup_complete!
+      end
+
+      worktree.run_switch!
+
+      exec ENV.fetch("SHELL", "/bin/zsh")
     end
 
     def cmd_skill(args)

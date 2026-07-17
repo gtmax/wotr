@@ -1,6 +1,7 @@
 ## [Unreleased]
 
 ### Added
+- **`wotr new <branch>` CLI command**: Create a worktree (branched from `origin/<default-branch>`) from the command line, without driving the TUI. Create-only by default (setup is deferred until entry, mirroring the TUI), so it's safe to script. Pass `--switch` to enter the new worktree: run the `new` (setup) and `switch` hooks and drop into a shell in it. Idempotent — acts on an existing worktree instead of failing. Enables automation such as spawning a worktree in a fresh terminal/workspace.
 - **Worktrees for existing branches**: Allow creation of worktrees from branches that already exist.
 - **Paste support**: Support pasting into new branch and filtering dialogs.
 - **Teardown via `.wotr/config`**: Teardown is now declared under the `hooks:` block alongside `new`/`switch`, supporting `bg`/`fg` steps and YAML-embedded scripts.
