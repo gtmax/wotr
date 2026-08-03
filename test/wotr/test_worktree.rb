@@ -130,6 +130,22 @@ module Wotr
       refute Dir.exist?(wt.path)
     end
 
+    def test_delete_releases_held_leases
+      result = @repo.create_worktree("lease-holder")
+      wt = result[:worktree]
+      assert result[:success], "Expected success: #{result[:error]}"
+      wt.mark_setup_complete!
+
+      # This worktree holds one resource; another worktree holds a second.
+      @repo.lease_store.acquire("web", holder: wt.path, holder_branch: "lease-holder")
+      @repo.lease_store.acquire("test", holder: @tmpdir, holder_branch: "main")
+
+      wt.delete!(force: true)
+
+      assert_nil @repo.lease_store.get("web"), "deleted worktree's lease should be released"
+      refute_nil @repo.lease_store.get("test"), "another holder's lease must survive"
+    end
+
     def test_delete_runs_teardown
       result = @repo.create_worktree("teardown-delete")
       wt = result[:worktree]

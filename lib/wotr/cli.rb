@@ -1,9 +1,16 @@
 # frozen_string_literal: true
 
 require 'json'
+require_relative 'resource_lease'
+require_relative 'lease'
 
 module Wotr
   class CLI
+    # Bounded wait (seconds) before `wotr acquire` gives up on a held resource
+    # and prints an actionable decision. `--wait` extends this to WAIT_MAX.
+    WAIT_DEFAULT = 15
+    WAIT_MAX = 30 * 60
+    WAIT_POLL = 3
     INIT_TEMPLATE = <<~YAML
       # .wotr/config — wotr configuration
       # See: https://github.com/gtmax/wotr
@@ -77,9 +84,12 @@ module Wotr
         wotr                          Launch TUI
         wotr --repo-path <path> ...   Run any command against a different repo
         wotr new <branch> [--switch]  Create a worktree (--switch to enter it)
-        wotr acquire <resource>       Run resource acquire script
+        wotr acquire <resource>       Acquire a resource (take its lease + run acquire)
+                       [--force]        take it even if another worktree holds it
+                       [--wait]         keep waiting instead of failing fast
+        wotr release <resource>       Release this worktree's lease on a resource
         wotr inquire [resource]       Run resource inquire script(s), print JSON
-        wotr resources                List configured resources
+        wotr resources                List configured resources and who holds them
         wotr run <hook>               Run a config hook (e.g. new, switch)
         wotr init                     Scaffold .wotr/config in current repo
         wotr skill install            Install wotr-config skill for Claude Code
@@ -96,10 +106,18 @@ module Wotr
                    (rename tab, launch editor/claude, …), then open a shell in it.
                    Without it, 'new' just creates the worktree and returns.
 
+      Options for 'acquire' (exclusive resources):
+        By default, if another worktree already holds the resource, acquire waits
+        briefly then exits non-zero rather than stealing it silently.
+        --force    take it anyway (stops the holder); prints who it took it from
+        --wait     keep waiting for the holder to release instead of failing fast
+
       Environment:
-        WOTR_ROOT         Repo root (set automatically in scripts)
-        WOTR_WORKTREE     Current worktree path (set automatically in scripts)
-        WOTR_START_POINT  Base ref for new branches (default: origin/<default-branch>)
+        WOTR_ROOT          Repo root (set automatically in scripts)
+        WOTR_WORKTREE      Current worktree path (set automatically in scripts)
+        WOTR_START_POINT   Base ref for new branches (default: origin/<default-branch>)
+        WOTR_ACQUIRE_WAIT  Seconds 'acquire' waits on a held resource before failing
+                           (default 15; 0 fails immediately after one check)
     USAGE
 
     def self.run(argv)
@@ -123,6 +141,7 @@ module Wotr
       when "status"                   then cmd_status(args)
       when "list"                     then cmd_list
       when "acquire"                  then cmd_acquire(args)
+      when "release"                  then cmd_release(args)
       when "inquire"                  then cmd_inquire(args)
       when "resources"                then cmd_resources
       when "run"                      then cmd_run(args)
@@ -352,9 +371,11 @@ module Wotr
     end
 
     def cmd_acquire(args)
-      name = args[0]
+      force = !args.delete("--force").nil?
+      wait = !args.delete("--wait").nil?
+      name = args.find { |a| !a.start_with?("--") }
       if name.nil?
-        warn "Usage: wotr acquire <resource>"
+        warn "Usage: wotr acquire <resource> [--force] [--wait]"
         exit 1
       end
 
@@ -367,15 +388,89 @@ module Wotr
         exit 1
       end
 
+      # Compatible (non-exclusive) resources have no single owner — nothing to
+      # lease or contend for. Keep the original run-and-report behaviour.
+      unless cfg.exclusive?(name)
+        run_acquire_or_exit(repo, cfg, name)
+        return
+      end
+
+      me = repo.worktree_containing(Dir.pwd)
+      me_path = me ? me.path : realpath(Dir.pwd)
+      me_branch = me&.branch
+      svc = ResourceLease.new(repo)
+      env = wotr_env(repo)
+
+      # Contention gate: if another live worktree holds the resource and we
+      # weren't told to force, wait a bounded interval then fail with a decision.
+      unless force
+        waited = 0
+        cap = wait ? WAIT_MAX : acquire_wait_default
+        announced = false
+        loop do
+          holder = svc.current_holder(name, chdir: Dir.pwd, env: env)
+          break if holder.nil? || svc.same_path?(holder.path, me_path)
+
+          if wait && !announced
+            puts "#{name} is held by #{holder_label(holder)}; waiting..."
+            announced = true
+          end
+
+          if waited >= cap
+            print_acquire_decision(name, holder, waited)
+            exit 1
+          end
+
+          slice = [WAIT_POLL, cap - waited].min
+          sleep slice
+          waited += slice
+        end
+      else
+        holder = svc.current_holder(name, chdir: Dir.pwd, env: env)
+        if holder && !svc.same_path?(holder.path, me_path)
+          puts "Taking #{name} from #{holder_label(holder)} (--force)."
+        end
+      end
+
       puts "Acquiring #{name}..."
-      result = cfg.run_acquire(name, env: wotr_env(repo), chdir: Dir.pwd)
+      result = cfg.run_acquire(name, env: env, chdir: Dir.pwd)
 
       unless result[:ran]
         warn "wotr: no acquire script for resource '#{name}'"
         exit 1
       end
 
-      exit 1 unless result[:success]
+      unless result[:success]
+        # Acquire failed — don't claim a lease we don't actually hold.
+        exit 1
+      end
+
+      svc.record_acquire(name, holder: me_path, holder_branch: me_branch)
+      puts "Acquired #{name}."
+    end
+
+    def cmd_release(args)
+      name = args[0]
+      if name.nil?
+        warn "Usage: wotr release <resource>"
+        exit 1
+      end
+
+      repo = find_repo_or_exit
+      require_config!(repo)
+      cfg = config(repo)
+
+      unless cfg.resource(name)
+        warn "wotr: resource '#{name}' not found in .wotr/config"
+        exit 1
+      end
+
+      released = repo.lease_store.release(name)
+      if released
+        puts "Released #{name}."
+      else
+        puts "No lease on #{name} to release."
+      end
     end
 
     def cmd_inquire(args)
@@ -429,6 +524,9 @@ module Wotr
         return
       end
 
+      svc = ResourceLease.new(repo)
+      env = wotr_env(repo)
+
       names.each do |name|
         res = cfg.resource(name)
         icon = res["icon"] || "•"
@@ -436,6 +534,15 @@ module Wotr
         kind = res["exclusive"] == true ? "exclusive" : "compatible"
         puts "#{icon}  #{name} (#{kind})"
         puts "   #{desc}" unless desc.empty?
+
+        next unless cfg.exclusive?(name)
+
+        holder = svc.current_holder(name, chdir: Dir.pwd, env: env)
+        if holder.nil?
+          puts "   \e[2mfree\e[0m"
+        else
+          describe_holder(holder).each { |line| puts "   #{line}" }
+        end
       end
     end
 
@@ -516,6 +623,88 @@ module Wotr
       end
 
       puts "wotr uninstalled."
+    end
+
+    # --- Resource / lease helpers ---
+
+    # Run a resource's acquire script and exit non-zero on failure. Used for
+    # compatible resources (no leasing) and preserves the pre-lease behaviour.
+    def run_acquire_or_exit(repo, cfg, name)
+      puts "Acquiring #{name}..."
+      result = cfg.run_acquire(name, env: wotr_env(repo), chdir: Dir.pwd)
+
+      unless result[:ran]
+        warn "wotr: no acquire script for resource '#{name}'"
+        exit 1
+      end
+
+      exit 1 unless result[:success]
+    end
+
+    # A short label for a holder: its branch, else a worktree basename, else a
+    # generic phrase for a non-worktree owner.
+    def holder_label(holder)
+      if holder.branch
+        "worktree '#{holder.branch}'"
+      elsif holder.path && holder.path != "unknown"
+        "worktree '#{File.basename(holder.path)}'"
+      else
+        "another process"
+      end
+    end
+
+    # The multi-line holder description shown under a resource in `wotr resources`.
+    def describe_holder(holder)
+      lines = ["held by #{holder_label(holder)}"]
+      lease = holder.lease
+      if lease
+        now = Time.now.to_i
+        if lease.adopted?
+          detail = "detected #{Duration.human(lease.age(now))} ago (started outside wotr)"
+        else
+          detail = "acquired #{Duration.human(lease.age(now))} ago, " \
+                   "renewed #{Duration.human(lease.since_renew(now))} ago"
+        end
+        detail += "  \e[2m[lapsed]\e[0m" unless lease.live?(now)
+        lines << detail
+      end
+      lines
+    end
+
+    # The actionable failure block printed when acquire gives up on a held
+    # resource (mirrors the shape proposed in the issue).
+    def print_acquire_decision(name, holder, waited)
+      warn "#{name} is held by #{holder_label(holder)}"
+      lease = holder.lease
+      if lease
+        now = Time.now.to_i
+        if lease.adopted?
+          warn "  detected #{Duration.human(lease.age(now))} ago (started outside wotr)"
+        else
+          warn "  acquired #{Duration.human(lease.age(now))} ago, " \
+               "last renewed #{Duration.human(lease.since_renew(now))} ago"
+        end
+      end
+      warn "  waited #{Duration.human(waited)}"
+      warn ""
+      warn "  wotr acquire #{name} --force   take it anyway"
+      warn "  wotr acquire #{name} --wait    keep waiting"
+    end
+
+    def realpath(path)
+      File.realpath(path)
+    rescue Errno::ENOENT
+      File.expand_path(path)
+    end
+
+    # Bounded wait before `wotr acquire` fails on a held resource. Overridable via
+    # WOTR_ACQUIRE_WAIT (seconds) so agents can tune fail-fast behaviour; 0 fails
+    # immediately after a single check.
+    def acquire_wait_default
+      raw = ENV["WOTR_ACQUIRE_WAIT"]
+      return WAIT_DEFAULT if raw.nil? || raw.strip.empty?
+
+      [raw.to_i, 0].max
     end
 
     # --- Helpers ---

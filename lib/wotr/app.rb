@@ -6,6 +6,7 @@ require "pty"
 require_relative "repository"
 require_relative "worktree"
 require_relative "config"
+require_relative "resource_lease"
 require_relative "model"
 require_relative "view"
 require_relative "update"
@@ -301,6 +302,17 @@ module Wotr
         model.start_background_activity
 
         Thread.new do
+          # Leased (exclusive) resources: surface a takeover so it isn't silent,
+          # then record the lease after a successful acquire.
+          svc = cfg.exclusive?(name) ? ResourceLease.new(model.repository) : nil
+          if svc
+            holder = svc.current_holder(name, chdir: wt_path, env: env)
+            if holder && !svc.same_path?(holder.path, wt_path)
+              from = holder.branch ? "worktree '#{holder.branch}'" : "another holder"
+              main_queue << { type: :task_log_line, line: "Taking #{name} from #{from}...", status: true }
+            end
+          end
+
           script = cfg.resource(name)&.fetch("acquire", nil)
           success = true
           if script
@@ -314,6 +326,7 @@ module Wotr
             success = $?.success?
           end
           if success
+            svc&.record_acquire(name, holder: wt_path, holder_branch: cmd[:worktree].branch)
             main_queue << { type: :task_complete,
                             result: { type: :refresh_after_acquire },
                             message: "Acquired #{name}." }

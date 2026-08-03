@@ -3,6 +3,7 @@
 require 'git'
 require 'fileutils'
 require_relative 'config'
+require_relative 'lease'
 
 module Wotr
   class Repository
@@ -37,6 +38,37 @@ module Wotr
 
     def config_dir
       File.join(@root, CONFIG_DIR)
+    end
+
+    # Shared wotr state directory, sibling to the worktrees. Holds cross-worktree
+    # state that must outlive any individual worktree — the scripts log and the
+    # resource lease store both live here.
+    def state_dir
+      File.join(worktrees_dir, CONFIG_DIR)
+    end
+
+    def lease_store
+      @lease_store ||= LeaseStore.for_dir(state_dir)
+    end
+
+    # The worktree that contains `path` (defaults to CWD), or nil if none does.
+    # Used to identify "me" when acquiring/holding a resource from the CLI, where
+    # the command may run from a subdirectory of a worktree.
+    def worktree_containing(path = Dir.pwd)
+      target = begin
+        File.realpath(path)
+      rescue Errno::ENOENT
+        File.expand_path(path)
+      end
+
+      worktrees.find do |wt|
+        wt_real = begin
+          File.realpath(wt.path)
+        rescue Errno::ENOENT
+          File.expand_path(wt.path)
+        end
+        target == wt_real || target.start_with?("#{wt_real}/")
+      end
     end
 
     def has_teardown_hook?

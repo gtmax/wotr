@@ -96,6 +96,7 @@ Use `stop_on_failure: false` for best-effort steps like tab renaming that should
 | `description` | string | — | Shown in resource legend |
 | `acquire` | string | — | Shell script to claim/setup the resource |
 | `inquire` | string | — | Shell script to check status (outputs JSON) |
+| `lease_ttl_minutes` | number | `30` | (Exclusive only) How long a holder's lease stays valid without renewal |
 
 ### Exclusive vs Compatible
 
@@ -108,6 +109,12 @@ Use `stop_on_failure: false` for best-effort steps like tab renaming that should
 - Each worktree independently compatible or not. Think: DB migrations, file state.
 - `inquire` reports whether this worktree is compatible.
 - `acquire` makes this worktree compatible (e.g., runs migrations).
+
+### Leases (exclusive resources)
+
+Exclusive resources are lease-tracked. `wotr acquire` records which worktree holds the resource; `wotr resources` shows the holder and how long ago it was acquired/renewed; and acquiring a resource another live worktree holds fails with a decision (`--force` to take it, `--wait` to keep waiting) instead of silently stealing it. A lease lapses after `lease_ttl_minutes` (default 30) without renewal, and is released automatically when its worktree is deleted.
+
+For this to work, an exclusive resource's `inquire` **must** report the owner as an absolute path (`status=owned owner="$root"`), because the physical probe — not the stored lease — is the authoritative "who holds it right now" signal.
 
 ### inquire Script Output
 

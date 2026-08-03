@@ -95,6 +95,14 @@ module Wotr
     #   (e.g. streamed to the TUI log pane) and just wants the removal steps.
     # Returns { success: Boolean, error: String?, warning: String? }
     def delete!(force: false, skip_teardown: false)
+      # Resolve the holder key while the directory still exists — leases record
+      # the realpath, which can't be recomputed once the worktree is removed.
+      holder_key = if exists?
+                     File.realpath(@path) rescue @path
+                   else
+                     @path
+                   end
+
       # Step 0: Run teardown script if directory exists
       if exists? && !skip_teardown
         result = run_teardown!
@@ -120,10 +128,15 @@ module Wotr
         end
       end
 
-      # Step 3: Clean up empty parent directories under .worktrees/
+      # Step 3: Release any resource leases this worktree held. The lease store
+      # lives outside the worktree, so a deleted worktree would otherwise leave a
+      # dangling claim that blocks others until it lapsed.
+      @repository.lease_store.release_for_holder(holder_key)
+
+      # Step 4: Clean up empty parent directories under .worktrees/
       cleanup_empty_parents
 
-      # Step 4: Delete Branch
+      # Step 5: Delete Branch
       delete_branch(force: force)
     end
 

@@ -5,6 +5,7 @@ require 'tempfile'
 require 'fileutils'
 require 'open3'
 require 'json'
+require_relative 'lease'
 
 module Wotr
   class Config
@@ -86,6 +87,16 @@ module Wotr
 
     def exclusive?(name)
       resource(name)&.fetch("exclusive", false) == true
+    end
+
+    # Lease time-to-live for a resource, in seconds. A holder's claim lapses this
+    # long after it was last confirmed. Configurable per resource via
+    # `lease_ttl_minutes:`; defaults to LeaseStore::DEFAULT_TTL.
+    def lease_ttl(name)
+      minutes = resource(name)&.fetch("lease_ttl_minutes", nil)
+      return LeaseStore::DEFAULT_TTL if minutes.nil?
+
+      (minutes.to_f * 60).round
     end
 
     def empty?

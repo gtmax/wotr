@@ -144,6 +144,37 @@ resources:
 
 wotr polls all resources every 60 seconds and shows ownership/status as icons next to each worktree in the TUI. Press a resource's shortcut key to acquire it for the selected worktree.
 
+#### Leases: who holds a resource, and taking it non-silently
+
+Exclusive resources carry a **lease** — a shared record of which worktree holds the resource, when it was acquired, and when ownership was last confirmed. The lease makes taking a resource visible in both directions, so an agent session can't unknowingly keep talking to a server another worktree now owns.
+
+```bash
+wotr resources                    # who holds each resource, and for how long
+wotr acquire web-server           # take it — but not silently (see below)
+wotr acquire web-server --force   # take it even if another worktree holds it
+wotr acquire web-server --wait    # keep waiting instead of failing fast
+wotr release web-server           # give up this worktree's lease
+```
+
+`wotr acquire` first checks who holds the resource (using its `inquire` probe, so a stale lease can never mask a live server). If another worktree holds it, wotr waits a bounded interval and then **fails with an actionable decision** rather than silently stealing:
+
+```
+web-server is held by worktree 'blastra_star'
+  acquired 40m ago, last renewed 12m ago
+  waited 15s
+
+  wotr acquire web-server --force   take it anyway
+  wotr acquire web-server --wait    keep waiting
+```
+
+- **Expiry.** A lease lapses on its own after its TTL (default 30 min; set per resource with `lease_ttl_minutes:`). An abandoned worktree's claim self-heals — no cleanup command. wotr renews the lease whenever it confirms (via `inquire`) that the holder still owns the resource, so an actively-used resource stays held.
+- **`--force`** still steals, for when the holder is genuinely dead — it's just no longer the silent default, and it prints who it took the resource from.
+- **Deleting a worktree** releases every lease it held.
+- The lease store lives in the shared wotr state dir (`.worktrees/<repo>/.wotr/leases.json`), outside any single worktree, and is flock-guarded.
+- The bounded wait defaults to 15s; override with `WOTR_ACQUIRE_WAIT=<seconds>` (0 fails immediately after one check).
+
+Leasing applies only to **exclusive** resources. For accurate holder identity, an exclusive resource's `inquire` should report `status=owned owner="$root"` (as the `web-server` example above does).
+
 ### Actions
 
 Actions are custom keyboard shortcuts bound to commands you run against a worktree:
